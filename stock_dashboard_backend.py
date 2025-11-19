@@ -672,12 +672,15 @@ def calc_avg_score(close, volume, open_price, high, low, config):
             up = 0.0
             down = 0.0
             for j in range(config['vr_length']):
-                change = src.iloc[i - j] - src.iloc[i - j - 1] if i - j - 1 >= 0 else 0
+                idx = i - j
+                if idx < 0 or idx >= len(vol):
+                    continue  # Skip if index is out of bounds
+                change = src.iloc[idx] - src.iloc[idx - 1] if idx - 1 >= 0 else 0
                 if change > 0:
-                    up += vol.iloc[i - j]
+                    up += vol.iloc[idx]
                 elif change == 0:
-                    up += vol.iloc[i - j] / 2
-                down += vol.iloc[i - j]
+                    up += vol.iloc[idx] / 2
+                down += vol.iloc[idx]
             vr_up.iloc[i] = up
             vr_down.iloc[i] = down
         vr = 100 * (vr_up / vr_down.replace(0, 1))
@@ -2006,8 +2009,9 @@ def get_analysis_results():
             total_comparisons = len(all_tickers) * (len(all_tickers) - 1)
             print(f"  Total comparisons needed: {total_comparisons}")
             
-            # Limit to avoid too many API calls - compare each stock against top 50 others
-            comparison_limit = min(50, len(all_tickers) - 1)
+            # Limit to avoid too many API calls and timeout - compare each stock against top 5 others
+            # Reduced from 50 to 5 to speed up processing and avoid timeouts
+            comparison_limit = min(5, len(all_tickers) - 1)
             
             for i, ticker1 in enumerate(all_tickers):
                 if i % 10 == 0:
