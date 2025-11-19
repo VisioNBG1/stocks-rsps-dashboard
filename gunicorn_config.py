@@ -7,7 +7,7 @@ bind = f"0.0.0.0:{os.environ.get('PORT', 5000)}"
 # Worker processes - Use 2 workers for Render free tier
 workers = 2
 worker_class = "sync"
-timeout = 900  # 15 minutes - downloads with delays can take 8-10 minutes for 11 stocks
+timeout = 1800  # 30 minutes - full analysis with all ratio comparisons can take 20-25 minutes
 keepalive = 5
 
 # Logging

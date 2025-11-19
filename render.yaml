@@ -3,7 +3,7 @@ services:
     name: stocks-rsps-dashboard
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 900 --graceful-timeout 900 --keep-alive 5 stock_dashboard_backend:app
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 1800 --graceful-timeout 1800 --keep-alive 5 stock_dashboard_backend:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0

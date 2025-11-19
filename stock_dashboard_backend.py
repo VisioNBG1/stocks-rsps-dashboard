@@ -689,11 +689,18 @@ def calc_avg_score(close, volume, open_price, high, low, config):
                 else:
                     change = src.iloc[idx] - src.iloc[idx - 1]
                 # Now safe to access vol.iloc[idx] since we've checked bounds
-                if change > 0:
-                    up += vol.iloc[idx]
-                elif change == 0:
-                    up += vol.iloc[idx] / 2
-                down += vol.iloc[idx]
+                # Double-check vol bounds before accessing
+                if idx < len(vol):
+                    try:
+                        vol_val = vol.iloc[idx]
+                        if change > 0:
+                            up += vol_val
+                        elif change == 0:
+                            up += vol_val / 2
+                        down += vol_val
+                    except (IndexError, KeyError):
+                        # Skip if access fails
+                        continue
             vr_up.iloc[i] = up
             vr_down.iloc[i] = down
         vr = 100 * (vr_up / vr_down.replace(0, 1))
@@ -2047,9 +2054,9 @@ def get_analysis_results():
             print(f"  Total comparisons needed: {total_comparisons}", flush=True)
             sys.stdout.flush()
             
-            # Limit to avoid too many API calls and timeout - compare each stock against top 5 others
-            # Reduced from 10 to 5 to avoid timeout (each comparison takes ~10s, 11 stocks × 5 = 55 comparisons = ~9 minutes)
-            comparison_limit = min(5, len(all_tickers) - 1)
+            # Compare each stock against all others for complete analysis
+            # Full analysis: 11 stocks × 10 comparisons = 110 comparisons × ~10s = ~18 minutes
+            comparison_limit = len(all_tickers) - 1  # Compare against all other stocks
             
             for i, ticker1 in enumerate(all_tickers):
                 if i % 10 == 0 or i == 0:
