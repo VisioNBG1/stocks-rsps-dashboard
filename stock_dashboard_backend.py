@@ -480,8 +480,13 @@ def calc_trend_score_avg(src, length):
     for i in range(length, len(src)):
         score = 0.0
         for j in range(1, length + 1):
-            if i - j >= 0:
-                score += 1 if src.iloc[i] >= src.iloc[i - j] else -1
+            # Check bounds for both indices
+            if i - j >= 0 and i < len(src) and (i - j) < len(src):
+                try:
+                    score += 1 if src.iloc[i] >= src.iloc[i - j] else -1
+                except (IndexError, KeyError):
+                    # Skip if index is out of bounds
+                    continue
         total.iloc[i] = score
     return total.fillna(0.0)
 
@@ -2042,9 +2047,9 @@ def get_analysis_results():
             print(f"  Total comparisons needed: {total_comparisons}", flush=True)
             sys.stdout.flush()
             
-            # Limit to avoid too many API calls and timeout - compare each stock against top 10 others
-            # Increased from 5 to 10 for better ratio analysis
-            comparison_limit = min(10, len(all_tickers) - 1)
+            # Limit to avoid too many API calls and timeout - compare each stock against top 5 others
+            # Reduced from 10 to 5 to avoid timeout (each comparison takes ~10s, 11 stocks × 5 = 55 comparisons = ~9 minutes)
+            comparison_limit = min(5, len(all_tickers) - 1)
             
             for i, ticker1 in enumerate(all_tickers):
                 if i % 10 == 0 or i == 0:
