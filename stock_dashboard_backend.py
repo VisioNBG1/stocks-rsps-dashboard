@@ -1781,33 +1781,44 @@ def get_analysis_results():
                 
                 print(f"  Downloading batch: {', '.join(all_tickers)}...")
                 # Try using Ticker objects instead of download() - different API endpoint, less rate-limited
+                batch_df = None
                 try:
                     # Method 1: Try batch download first
                     batch_df = yf.download(all_tickers, period="2y", interval="1d", progress=False, group_by='ticker')
                 except Exception as download_error:
                     # Method 2: Fallback to individual Ticker objects if batch fails
-                    print(f"    Batch download failed: {download_error}")
-                    print(f"    Trying individual Ticker objects instead...")
-                    batch_df = None
-                    # Download individually using Ticker class
-                    for ticker in all_tickers:
-                        try:
-                            ticker_obj = yf.Ticker(ticker)
-                            ticker_data = ticker_obj.history(period="2y", interval="1d")
-                            if not ticker_data.empty:
-                                if batch_df is None:
-                                    batch_df = pd.DataFrame(index=ticker_data.index)
-                                batch_data[ticker] = ticker_data
-                                time.sleep(2)  # 2 second delay between tickers
-                        except Exception as e:
-                            print(f"    Error downloading {ticker} with Ticker: {e}")
-                            continue
-                    
-                    if batch_df is None:
-                        raise Exception("All download methods failed")
+                    error_msg = str(download_error)
+                    print(f"    Batch download failed: {error_msg}")
+                    if "Rate limited" in error_msg or "Too Many Requests" in error_msg or "YFRateLimitError" in error_msg:
+                        print(f"    Rate limited - trying individual Ticker objects with delays...")
+                        # Download individually using Ticker class
+                        for ticker in all_tickers:
+                            try:
+                                print(f"      Downloading {ticker}...")
+                                ticker_obj = yf.Ticker(ticker)
+                                ticker_data = ticker_obj.history(period="2y", interval="1d")
+                                if not ticker_data.empty:
+                                    batch_data[ticker] = ticker_data
+                                    print(f"      ✓ {ticker} downloaded")
+                                time.sleep(5)  # 5 second delay between tickers
+                            except Exception as e:
+                                print(f"      ✗ Error downloading {ticker} with Ticker: {e}")
+                                continue
+                        
+                        # If we got some data, continue processing
+                        if batch_data:
+                            print(f"  ✓ Downloaded {len(batch_data)}/{len(all_tickers)} stocks using Ticker method")
+                            # Skip the batch_df processing and go straight to individual processing
+                            break
+                        else:
+                            raise Exception("All download methods failed - no data retrieved")
+                    else:
+                        raise download_error
                 
-                # yfinance returns data in different formats depending on number of tickers
-                if len(all_tickers) == 1:
+                # Only process batch_df if we got it from batch download (not from Ticker fallback)
+                if batch_df is not None and not batch_data:
+                    # yfinance returns data in different formats depending on number of tickers
+                    if len(all_tickers) == 1:
                     # Single ticker - returns simple DataFrame
                     batch_data[all_tickers[0]] = batch_df
                 else:
