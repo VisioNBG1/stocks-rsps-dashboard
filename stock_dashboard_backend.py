@@ -1857,28 +1857,28 @@ def get_analysis_results():
                         # Single ticker - returns simple DataFrame
                         batch_data[all_tickers[0]] = batch_df
                     else:
-                    # Multiple tickers - returns MultiIndex DataFrame
-                    # Columns are like: (Open, AAPL), (High, AAPL), (Low, AAPL), (Close, AAPL), etc.
-                    if isinstance(batch_df.columns, pd.MultiIndex):
-                        # Extract each ticker's data
-                        for ticker in all_tickers:
-                            try:
-                                # Get all columns for this ticker (level=1 is the ticker)
-                                ticker_cols = [col for col in batch_df.columns if col[1] == ticker]
-                                if ticker_cols:
-                                    ticker_data = batch_df[ticker_cols]
-                                    # Drop the ticker level from column names
-                                    ticker_data.columns = ticker_data.columns.droplevel(1)
-                                    if not ticker_data.empty:
-                                        batch_data[ticker] = ticker_data
-                            except Exception as e:
-                                print(f"    Error extracting {ticker} from batch: {e}")
-                                continue
-                    else:
-                        # Single column structure - shouldn't happen with multiple tickers
-                        # But if it does, assign to first ticker
-                        if not batch_df.empty:
-                            batch_data[all_tickers[0]] = batch_df
+                        # Multiple tickers - returns MultiIndex DataFrame
+                        # Columns are like: (Open, AAPL), (High, AAPL), (Low, AAPL), (Close, AAPL), etc.
+                        if isinstance(batch_df.columns, pd.MultiIndex):
+                            # Extract each ticker's data
+                            for ticker in all_tickers:
+                                try:
+                                    # Get all columns for this ticker (level=1 is the ticker)
+                                    ticker_cols = [col for col in batch_df.columns if col[1] == ticker]
+                                    if ticker_cols:
+                                        ticker_data = batch_df[ticker_cols]
+                                        # Drop the ticker level from column names
+                                        ticker_data.columns = ticker_data.columns.droplevel(1)
+                                        if not ticker_data.empty:
+                                            batch_data[ticker] = ticker_data
+                                except Exception as e:
+                                    print(f"    Error extracting {ticker} from batch: {e}")
+                                    continue
+                        else:
+                            # Single column structure - shouldn't happen with multiple tickers
+                            # But if it does, assign to first ticker
+                            if not batch_df.empty:
+                                batch_data[all_tickers[0]] = batch_df
                 
                 print(f"  ✓ Successfully downloaded {len(batch_data)}/{len(all_tickers)} stocks")
                 break  # Success, exit retry loop
