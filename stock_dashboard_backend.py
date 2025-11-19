@@ -154,7 +154,7 @@ CONFIG = {
 # TEMPORARY: Using 1 stock per sector for faster testing
 # REMOVED STOCKS (to restore later): MSFT, CVX, JNJ, CAT, SO, KO, BAC, TSLA, PLD, APD, META
 # --- Helper function for downloading stock data with rate limiting and retries ---
-def download_stock_data(ticker, period="2y", interval="1d", start=None, end=None, max_retries=3, delay=0.5):
+def download_stock_data(ticker, period="2y", interval="1d", start=None, end=None, max_retries=3, delay=2.0):
     """
     Download stock data with rate limiting and retry logic.
     
@@ -199,7 +199,8 @@ def download_stock_data(ticker, period="2y", interval="1d", start=None, end=None
             # Check if it's a rate limit error
             if "Rate limited" in error_msg or "Too Many Requests" in error_msg or "429" in error_msg or "YFRateLimitError" in error_msg:
                 if attempt < max_retries - 1:
-                    wait_time = delay * (2 ** (attempt + 2))  # Longer wait for rate limits (2, 4, 8 seconds)
+                    # Much longer wait for rate limits: 30s, 60s, 120s
+                    wait_time = 30 * (2 ** attempt)  # 30, 60, 120 seconds
                     print(f"    Rate limited for {ticker}. Waiting {wait_time:.1f}s before retry...")
                     time.sleep(wait_time)
                     continue
@@ -1749,14 +1750,18 @@ def get_analysis_results():
         else:
             print("  No cache found - calculating fresh data (this may take 3-5 minutes)...")
         
+        # Add initial delay before starting downloads to avoid immediate rate limits
+        print("  Waiting 3 seconds before starting downloads to avoid rate limits...")
+        time.sleep(3)
+        
         results = []
         for sector, tickers in SECTORS.items():
             print(f"\n--- Processing Sector: {sector} ---")
             for ticker in tickers:
                 try:
                     print(f"  Analyzing {ticker}...")
-                    # Use helper function with rate limiting and retries
-                    data = download_stock_data(ticker, period="2y", interval="1d", max_retries=3, delay=0.5)
+                    # Use helper function with rate limiting and retries (2 second delay between requests)
+                    data = download_stock_data(ticker, period="2y", interval="1d", max_retries=3, delay=2.0)
                     
                     if data.empty:
                         print(f"  No data for {ticker}, skipping.")
