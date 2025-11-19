@@ -1750,18 +1750,94 @@ def get_analysis_results():
         else:
             print("  No cache found - calculating fresh data (this may take 3-5 minutes)...")
         
-        # Add initial delay before starting downloads to avoid immediate rate limits
-        print("  Waiting 3 seconds before starting downloads to avoid rate limits...")
-        time.sleep(3)
+        # Collect all tickers first
+        all_tickers = []
+        ticker_to_sector = {}
+        for sector, tickers in SECTORS.items():
+            for ticker in tickers:
+                all_tickers.append(ticker)
+                ticker_to_sector[ticker] = sector
         
+        print(f"  Downloading data for {len(all_tickers)} stocks in batch (more efficient)...")
+        
+        # Batch download all stocks at once - much more efficient and reduces API calls
+        batch_data = {}
+        max_batch_retries = 3
+        for batch_attempt in range(max_batch_retries):
+            try:
+                if batch_attempt > 0:
+                    wait_time = 30 * (2 ** batch_attempt)  # 30s, 60s, 120s
+                    print(f"  Batch download attempt {batch_attempt + 1}/{max_batch_retries}, waiting {wait_time}s...")
+                    time.sleep(wait_time)
+                
+                print(f"  Downloading batch: {', '.join(all_tickers)}...")
+                batch_df = yf.download(all_tickers, period="2y", interval="1d", progress=False, group_by='ticker')
+                
+                # yfinance returns data in different formats depending on number of tickers
+                if len(all_tickers) == 1:
+                    # Single ticker - returns simple DataFrame
+                    batch_data[all_tickers[0]] = batch_df
+                else:
+                    # Multiple tickers - returns MultiIndex DataFrame or dict
+                    if isinstance(batch_df.columns, pd.MultiIndex):
+                        # MultiIndex columns - extract each ticker
+                        for ticker in all_tickers:
+                            try:
+                                ticker_data = batch_df.xs(ticker, level=1, axis=1)
+                                if not ticker_data.empty:
+                                    batch_data[ticker] = ticker_data
+                            except (KeyError, IndexError):
+                                # Try alternative extraction method
+                                try:
+                                    ticker_data = batch_df[ticker] if ticker in batch_df.columns.get_level_values(1) else pd.DataFrame()
+                                    if not ticker_data.empty:
+                                        batch_data[ticker] = ticker_data
+                                except:
+                                    pass
+                    else:
+                        # Single column structure - all tickers in one DataFrame
+                        # This shouldn't happen with multiple tickers, but handle it
+                        batch_data[all_tickers[0]] = batch_df
+                
+                print(f"  ✓ Successfully downloaded {len(batch_data)}/{len(all_tickers)} stocks")
+                break  # Success, exit retry loop
+                
+            except Exception as e:
+                error_msg = str(e)
+                if "Rate limited" in error_msg or "Too Many Requests" in error_msg or "429" in error_msg or "YFRateLimitError" in error_msg:
+                    if batch_attempt < max_batch_retries - 1:
+                        continue  # Will retry with longer wait
+                    else:
+                        print(f"  ✗ Batch download failed after {max_batch_retries} attempts due to rate limiting")
+                        print(f"  Falling back to individual downloads with delays...")
+                        # Fall back to individual downloads
+                        batch_data = {}
+                        break
+                else:
+                    print(f"  ✗ Batch download error: {error_msg}")
+                    if batch_attempt < max_batch_retries - 1:
+                        time.sleep(10)
+                        continue
+                    else:
+                        print(f"  Falling back to individual downloads...")
+                        batch_data = {}
+                        break
+        
+        # Process downloaded data
         results = []
         for sector, tickers in SECTORS.items():
             print(f"\n--- Processing Sector: {sector} ---")
             for ticker in tickers:
                 try:
                     print(f"  Analyzing {ticker}...")
-                    # Use helper function with rate limiting and retries (2 second delay between requests)
-                    data = download_stock_data(ticker, period="2y", interval="1d", max_retries=3, delay=2.0)
+                    
+                    # Get data from batch or download individually
+                    if ticker in batch_data and not batch_data[ticker].empty:
+                        data = batch_data[ticker]
+                    else:
+                        # Fallback: download individually with delays
+                        print(f"    Data not in batch, downloading individually...")
+                        data = download_stock_data(ticker, period="2y", interval="1d", max_retries=3, delay=5.0)
                     
                     if data.empty:
                         print(f"  No data for {ticker}, skipping.")
