@@ -183,10 +183,10 @@ def download_stock_data(ticker, period="2y", interval="1d", start=None, end=None
             
             # Use start/end if provided, otherwise use period
             if start is not None and end is not None:
-                data = yf.download(ticker, start=start, end=end, interval=interval, progress=False, show_errors=False)
+                data = yf.download(ticker, start=start, end=end, interval=interval, progress=False)
             else:
                 # Use period (defaults to "2y" if not specified)
-                data = yf.download(ticker, period=period, interval=interval, progress=False, show_errors=False)
+                data = yf.download(ticker, period=period, interval=interval, progress=False)
             
             if not data.empty:
                 return data
