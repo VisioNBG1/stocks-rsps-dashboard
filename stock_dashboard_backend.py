@@ -12,11 +12,18 @@ import json
 from datetime import datetime, timedelta
 import time
 
-# Disable yfinance cache to avoid "database is locked" errors
-yf.pdr_override()
-# Set cache to None to disable caching
-import yfinance.cache as yf_cache
-yf_cache.set_tz_cache_location(None)
+# Disable yfinance cache to avoid "database is locked" errors in multi-worker environments
+# Set environment variable to disable cache
+os.environ['YFINANCE_CACHE_DISABLE'] = '1'
+# Also try to disable cache programmatically
+try:
+    import yfinance.cache as yf_cache
+    # Disable cache by setting cache location to a temp directory that gets cleared
+    import tempfile
+    cache_dir = tempfile.mkdtemp()
+    yf_cache.set_tz_cache_location(cache_dir)
+except:
+    pass  # If cache disabling fails, continue anyway
 
 # --- Flask App Setup ---
 app = Flask(__name__)
