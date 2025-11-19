@@ -1814,6 +1814,7 @@ def get_analysis_results():
         
         for idx, ticker in enumerate(all_tickers, 1):
             print(f"  Starting download {idx}/{len(all_tickers)}: {ticker}", flush=True)
+            sys.stdout.flush()
             max_retries = 3
             download_success = False
             for retry in range(max_retries):
@@ -1869,9 +1870,16 @@ def get_analysis_results():
             
             # Wait between downloads (except after the last one)
             if idx < len(all_tickers):
-                print(f"  Waiting {download_delay}s before next download...", flush=True)
-                time.sleep(download_delay)
-                print(f"  Continuing to next stock...", flush=True)
+                print(f"  Waiting {download_delay}s before next download (stock {idx}/{len(all_tickers)} complete)...", flush=True)
+                sys.stdout.flush()
+                # Sleep in smaller increments to allow for interruption and better logging
+                for wait_sec in range(download_delay):
+                    time.sleep(1)
+                    if wait_sec % 5 == 0 and wait_sec > 0:
+                        print(f"    ... {download_delay - wait_sec}s remaining...", flush=True)
+                        sys.stdout.flush()
+                print(f"  Wait complete, continuing to next stock...", flush=True)
+                sys.stdout.flush()
         
         # Check if we got any data
         if not batch_data:
