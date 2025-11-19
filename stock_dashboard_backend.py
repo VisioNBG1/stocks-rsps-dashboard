@@ -1864,7 +1864,7 @@ def get_analysis_results():
         if not batch_data:
             raise Exception("Failed to download any stock data after multiple attempts.")
         
-        print(f"  ✓ Successfully downloaded {len(batch_data)}/{len(all_tickers)} stocks")
+        print(f"  ✓ Successfully downloaded {len(batch_data)}/{len(all_tickers)} stocks", flush=True)
         
         # Process downloaded data
         results = []
