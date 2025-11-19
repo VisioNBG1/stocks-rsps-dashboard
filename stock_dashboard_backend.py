@@ -12,6 +12,12 @@ import json
 from datetime import datetime, timedelta
 import time
 
+# Disable yfinance cache to avoid "database is locked" errors
+yf.pdr_override()
+# Set cache to None to disable caching
+import yfinance.cache as yf_cache
+yf_cache.set_tz_cache_location(None)
+
 # --- Flask App Setup ---
 app = Flask(__name__)
 # CORS is required to allow the HTML file to call the server
@@ -1795,14 +1801,36 @@ def get_analysis_results():
                         for ticker in all_tickers:
                             try:
                                 print(f"      Downloading {ticker}...")
+                                # Disable cache for this ticker
                                 ticker_obj = yf.Ticker(ticker)
-                                ticker_data = ticker_obj.history(period="2y", interval="1d")
+                                # Use session to avoid cache issues
+                                ticker_obj.session = None
+                                ticker_data = ticker_obj.history(period="2y", interval="1d", timeout=30)
                                 if not ticker_data.empty:
                                     batch_data[ticker] = ticker_data
                                     print(f"      ✓ {ticker} downloaded")
-                                time.sleep(5)  # 5 second delay between tickers
+                                else:
+                                    print(f"      ✗ {ticker} returned empty data")
+                                time.sleep(10)  # 10 second delay between tickers to avoid rate limits
                             except Exception as e:
-                                print(f"      ✗ Error downloading {ticker} with Ticker: {e}")
+                                error_msg = str(e)
+                                if "Rate limited" in error_msg or "Too Many Requests" in error_msg or "YFRateLimitError" in error_msg:
+                                    print(f"      ✗ {ticker} rate limited, waiting 30s before next...")
+                                    time.sleep(30)
+                                elif "database is locked" in error_msg.lower():
+                                    print(f"      ✗ {ticker} cache locked, retrying in 5s...")
+                                    time.sleep(5)
+                                    # Retry once
+                                    try:
+                                        ticker_obj = yf.Ticker(ticker)
+                                        ticker_data = ticker_obj.history(period="2y", interval="1d", timeout=30)
+                                        if not ticker_data.empty:
+                                            batch_data[ticker] = ticker_data
+                                            print(f"      ✓ {ticker} downloaded on retry")
+                                    except:
+                                        print(f"      ✗ {ticker} failed on retry")
+                                else:
+                                    print(f"      ✗ Error downloading {ticker}: {error_msg}")
                                 continue
                         
                         # If we got some data, continue processing
