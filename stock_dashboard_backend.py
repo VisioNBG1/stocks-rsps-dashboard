@@ -1993,8 +1993,6 @@ def get_analysis_results():
                     # Calculate ratio avg_score (ticker1/ticker2)
                     try:
                         ratio_score = calculate_ratio_avg_score(ticker1, ticker2, CONFIG)
-                        if ratio_score is None:
-                            continue  # Skip if calculation failed
                         if ratio_score is not None:
                             ratio_z_scores.append(ratio_score)
                     except Exception as e:
