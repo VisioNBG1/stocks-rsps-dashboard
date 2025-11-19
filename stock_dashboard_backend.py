@@ -673,9 +673,13 @@ def calc_avg_score(close, volume, open_price, high, low, config):
             down = 0.0
             for j in range(config['vr_length']):
                 idx = i - j
-                if idx < 0 or idx >= len(vol):
+                # Check bounds for both idx and idx - 1
+                if idx < 0 or idx >= len(vol) or idx >= len(src):
                     continue  # Skip if index is out of bounds
-                change = src.iloc[idx] - src.iloc[idx - 1] if idx - 1 >= 0 else 0
+                if idx - 1 < 0 or idx - 1 >= len(src):
+                    change = 0  # Can't calculate change if previous index is out of bounds
+                else:
+                    change = src.iloc[idx] - src.iloc[idx - 1]
                 if change > 0:
                     up += vol.iloc[idx]
                 elif change == 0:
@@ -1989,6 +1993,8 @@ def get_analysis_results():
                     # Calculate ratio avg_score (ticker1/ticker2)
                     try:
                         ratio_score = calculate_ratio_avg_score(ticker1, ticker2, CONFIG)
+                        if ratio_score is None:
+                            continue  # Skip if calculation failed
                         if ratio_score is not None:
                             ratio_z_scores.append(ratio_score)
                     except Exception as e:
