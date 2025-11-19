@@ -968,13 +968,26 @@ def status_check():
 
 # --- Ratio Analysis and Backtesting Functions ---
 
-def calculate_ratio_avg_score(ticker1, ticker2, config):
-    """Calculate avg_score for a ratio of two stocks (ticker1/ticker2)"""
+def calculate_ratio_avg_score(ticker1, ticker2, config, data_cache=None):
+    """Calculate avg_score for a ratio of two stocks (ticker1/ticker2)
+    
+    Args:
+        ticker1: First stock ticker
+        ticker2: Second stock ticker
+        config: Configuration dictionary
+        data_cache: Optional dictionary of pre-downloaded stock data {ticker: DataFrame}
+    """
     try:
-        # Download data for both stocks
-        data1 = download_stock_data(ticker1, period="2y", interval="1d", max_retries=3, delay=0.5)
-        time.sleep(0.5)  # Delay between requests
-        data2 = download_stock_data(ticker2, period="2y", interval="1d", max_retries=3, delay=0.5)
+        # Use cached data if available, otherwise download
+        if data_cache and ticker1 in data_cache and ticker2 in data_cache:
+            data1 = data_cache[ticker1].copy()
+            data2 = data_cache[ticker2].copy()
+        else:
+            # Fallback: download if cache not available
+            print(f"    [!] Cache miss for {ticker1}/{ticker2}, downloading...", flush=True)
+            data1 = download_stock_data(ticker1, period="2y", interval="1d", max_retries=3, delay=0.5)
+            time.sleep(0.5)  # Delay between requests
+            data2 = download_stock_data(ticker2, period="2y", interval="1d", max_retries=3, delay=0.5)
         
         if data1.empty or data2.empty:
             return None
@@ -2028,7 +2041,8 @@ def get_analysis_results():
                     
                     # Calculate ratio avg_score (ticker1/ticker2)
                     try:
-                        ratio_score = calculate_ratio_avg_score(ticker1, ticker2, CONFIG)
+                        # Pass batch_data as cache to avoid re-downloading
+                        ratio_score = calculate_ratio_avg_score(ticker1, ticker2, CONFIG, data_cache=batch_data)
                         if ratio_score is not None:
                             ratio_z_scores.append(ratio_score)
                     except Exception as e:
