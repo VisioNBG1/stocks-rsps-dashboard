@@ -1746,10 +1746,13 @@ def get_analysis_results():
     """
     try:
         import time
+        import sys
         start_time = time.time()
-        print(f"\n{'='*60}")
-        print(f"Received request at /analyze endpoint (PID: {os.getpid()})...")
-        print(f"{'='*60}")
+        # Force flush to ensure logs appear immediately
+        print(f"\n{'='*60}", flush=True)
+        print(f"Received request at /analyze endpoint (PID: {os.getpid()})...", flush=True)
+        print(f"{'='*60}", flush=True)
+        sys.stdout.flush()
         
         # Check if we should use cache or force refresh
         force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
@@ -2094,18 +2097,20 @@ def get_analysis_results():
         error_msg = str(e)
         tb_str = traceback.format_exc()
         
-        # Print to stdout (visible in Render logs)
-        print(f"\n{'='*60}")
-        print(f"✗ FATAL ERROR in /analyze endpoint")
-        print(f"{'='*60}")
-        print(f"Error Type: {error_type}")
-        print(f"Error Message: {error_msg}")
-        print(f"\nFull Traceback:")
-        print(tb_str)
-        print(f"{'='*60}\n")
+        # Print to stdout (visible in Render logs) - force flush
+        print(f"\n{'='*60}", flush=True)
+        print(f"✗ FATAL ERROR in /analyze endpoint", flush=True)
+        print(f"{'='*60}", flush=True)
+        print(f"Error Type: {error_type}", flush=True)
+        print(f"Error Message: {error_msg}", flush=True)
+        print(f"\nFull Traceback:", flush=True)
+        print(tb_str, flush=True)
+        print(f"{'='*60}\n", flush=True)
+        sys.stdout.flush()
         
         # Also print to stderr
         print(tb_str, file=sys.stderr)
+        sys.stderr.flush()
         
         # Return error response
         return jsonify({
