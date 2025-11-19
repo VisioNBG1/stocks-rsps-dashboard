@@ -1822,19 +1822,8 @@ def get_analysis_results():
                     # Use Ticker class - different API endpoint, potentially less rate-limited
                     ticker_obj = yf.Ticker(ticker)
                     ticker_obj.session = None  # Disable cache
-                    # Add explicit timeout and error handling
-                    import signal
-                    
-                    def timeout_handler(signum, frame):
-                        raise TimeoutError(f"Download timeout for {ticker}")
-                    
-                    # Set timeout for download (90 seconds)
-                    ticker_data = None
-                    try:
-                        ticker_data = ticker_obj.history(period="2y", interval="1d", timeout=90)
-                    except Exception as download_ex:
-                        # Re-raise to be caught by outer exception handler
-                        raise download_ex
+                    # Set timeout for download (90 seconds) - increased from 60s
+                    ticker_data = ticker_obj.history(period="2y", interval="1d", timeout=90)
                     
                     if ticker_data is not None and not ticker_data.empty:
                         batch_data[ticker] = ticker_data
