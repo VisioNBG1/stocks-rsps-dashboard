@@ -1774,12 +1774,10 @@ def get_analysis_results():
         
         print(f"  Downloading data for {len(all_tickers)} stocks in batch (more efficient)...")
         
-        # Add a long initial delay to avoid immediate rate limits from Render's IP
-        print("  Waiting 60 seconds before first download attempt to avoid rate limits...")
-        print(f"  Current time: {time.strftime('%H:%M:%S')}")
-        for i in range(60, 0, -10):
-            print(f"  Waiting... {i} seconds remaining")
-            time.sleep(10)
+        # Add initial delay to avoid immediate rate limits from Render's IP
+        # Reduced from 60s to 10s - if rate limited, will retry with longer delays
+        print("  Waiting 10 seconds before first download attempt to avoid rate limits...")
+        time.sleep(10)
         print("  Delay complete, starting downloads...")
         
         # Batch download all stocks at once - much more efficient and reduces API calls
