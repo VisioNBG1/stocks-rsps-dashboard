@@ -2029,9 +2029,13 @@ def get_analysis_results():
                         break
                     
                     # Calculate ratio avg_score (ticker1/ticker2)
-                    ratio_score = calculate_ratio_avg_score(ticker1, ticker2, CONFIG)
-                    if ratio_score is not None:
-                        ratio_z_scores.append(ratio_score)
+                    try:
+                        ratio_score = calculate_ratio_avg_score(ticker1, ticker2, CONFIG)
+                        if ratio_score is not None:
+                            ratio_z_scores.append(ratio_score)
+                    except Exception as e:
+                        print(f"    Error calculating ratio for {ticker1}/{ticker2}: {e}")
+                        # Continue with next comparison
                     
                     comparisons_made += 1
                 
