@@ -1794,18 +1794,18 @@ def get_analysis_results():
         
         print(f"  Downloading data for {len(all_tickers)} stocks individually (to avoid rate limits)...")
         
-        # Add a long initial delay to avoid immediate rate limits from Render's IP
-        # Render's IP may already be rate-limited from previous attempts
-        print("  Waiting 120 seconds before first download attempt to avoid rate limits...")
-        for i in range(120, 0, -10):
+        # Add initial delay to avoid immediate rate limits from Render's IP
+        # Reduced to 60s to avoid timeout issues (with 15s between downloads, total time is manageable)
+        print("  Waiting 60 seconds before first download attempt to avoid rate limits...")
+        for i in range(60, 0, -10):
             print(f"  Waiting... {i}s remaining", end='\r', flush=True)
             time.sleep(10)
-        print("\n  Delay complete, starting individual downloads with 20s delays...")
+        print("\n  Delay complete, starting individual downloads with 15s delays...")
         
         # Skip batch download entirely - use individual downloads from the start
         # This is slower but more reliable for rate-limited IPs
         batch_data = {}
-        download_delay = 20  # 20 seconds between downloads
+        download_delay = 15  # 15 seconds between downloads (reduced from 20s to speed up)
         rate_limit_wait = 60  # 60 seconds if rate limited
         
         for idx, ticker in enumerate(all_tickers, 1):
