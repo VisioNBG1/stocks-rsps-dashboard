@@ -673,16 +673,17 @@ def calc_avg_score(close, volume, open_price, high, low, config):
             down = 0.0
             for j in range(config['vr_length']):
                 idx = i - j
-                # Check bounds for both idx and idx - 1 - must check vol length too
-                if idx < 0 or idx >= len(vol) or idx >= len(src):
-                    continue  # Skip if index is out of bounds
-                # Additional check: ensure we can access vol at idx
-                if idx < 0 or idx >= len(vol):
-                    continue  # Skip if volume index is out of bounds
+                # Check bounds - must be valid for both vol and src
+                if idx < 0:
+                    continue  # Skip negative indices
+                if idx >= len(vol) or idx >= len(src):
+                    continue  # Skip if index is out of bounds for either series
+                # Check if we can calculate change (need previous index)
                 if idx - 1 < 0 or idx - 1 >= len(src):
                     change = 0  # Can't calculate change if previous index is out of bounds
                 else:
                     change = src.iloc[idx] - src.iloc[idx - 1]
+                # Now safe to access vol.iloc[idx] since we've checked bounds
                 if change > 0:
                     up += vol.iloc[idx]
                 elif change == 0:
