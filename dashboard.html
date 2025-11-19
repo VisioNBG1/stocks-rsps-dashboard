@@ -1,0 +1,1423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stocks RSPS System Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #1a1a1a 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #e0e0e0;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: rgba(30, 30, 30, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header h1 {
+            color: #ffffff;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #b0b0b0;
+            font-size: 1.1em;
+        }
+
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 2px solid rgba(255, 255, 255, 0.1);
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .last-update {
+            color: #b0b0b0;
+            font-size: 0.9em;
+        }
+
+
+        .refresh-btn {
+            background: rgba(20, 20, 20, 0.95);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s;
+        }
+
+        .refresh-btn:hover {
+            background: rgba(30, 30, 30, 0.95);
+            transform: translateY(-2px);
+        }
+
+        .refresh-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: white;
+            font-size: 1.5em;
+        }
+
+        .error {
+            background: rgba(255, 0, 0, 0.1);
+            color: #d32f2f;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border: 2px solid #d32f2f;
+        }
+
+        .sectors-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .sector-card {
+            background: rgba(30, 30, 30, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s, box-shadow 0.3s;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sector-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.7);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .sector-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sector-name {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #ffffff;
+        }
+
+        .sector-z-score {
+            font-size: 1.8em;
+            font-weight: bold;
+            padding: 10px 20px;
+            border-radius: 10px;
+            min-width: 100px;
+            text-align: center;
+        }
+
+        .z-positive {
+            background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+            color: #0d7377;
+        }
+
+        .z-negative {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+            color: #8b1538;
+        }
+
+        .z-neutral {
+            background: rgba(224, 224, 224, 0.3);
+            color: #b0b0b0;
+        }
+
+        .stocks-list {
+            margin-top: 20px;
+        }
+
+        .stock-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            margin: 8px 0;
+            background: rgba(40, 40, 40, 0.8);
+            border-radius: 8px;
+            transition: all 0.2s;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .stock-item:hover {
+            background: rgba(50, 50, 50, 0.9);
+            transform: translateX(5px);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .stock-ticker {
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #ffffff;
+        }
+
+        .stock-scores {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .stock-z {
+            font-size: 1.2em;
+            font-weight: bold;
+            padding: 5px 15px;
+            border-radius: 6px;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        .legend {
+            background: rgba(30, 30, 30, 0.95);
+            padding: 20px;
+            border-radius: 15px;
+            margin-top: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .legend h3 {
+            margin-bottom: 15px;
+            color: #ffffff;
+        }
+
+        .legend-items {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #b0b0b0;
+        }
+
+        .legend-color {
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .loading-animation {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .rank-badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            margin-left: 10px;
+            font-weight: normal;
+        }
+
+        .expand-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            margin-top: 15px;
+            width: 100%;
+            transition: all 0.3s;
+        }
+
+        .expand-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        .stocks-hidden {
+            display: none;
+        }
+
+        .stock-count {
+            color: #b0b0b0;
+            font-size: 0.9em;
+            margin-top: 10px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Stocks RSPS System Dashboard</h1>
+            <p>Stocks Relative Strength Z-Score Analysis</p>
+            <p style="margin-top: 10px; color: #b0b0b0; font-size: 0.95em;">Analyzing 300+ stocks across 11 major sectors</p>
+            <div class="status-bar">
+                <div class="last-update" id="lastUpdate">Loading...</div>
+                <button class="refresh-btn" id="refreshBtn" onclick="loadData(true)">🔄 Update Data</button>
+            </div>
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="loading-animation">⏳ Loading market data...</div>
+        </div>
+
+        <div id="error" class="error" style="display: none;"></div>
+
+        <!-- Ratio Analysis & Equity Curve Section -->
+        <div id="ratioAnalysisContainer" style="display: none; margin-bottom: 40px;">
+            <div class="sector-card" style="background: rgba(30, 30, 30, 0.95); border: 2px solid rgba(102, 126, 234, 0.5);">
+                <div class="sector-header">
+                    <div>
+                        <span class="sector-name">📈 Ratio Analysis & Equity Curve Backtest</span>
+                    </div>
+                </div>
+                
+                <!-- Statistics -->
+                <div id="backtestStats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; padding: 15px; background: rgba(0, 0, 0, 0.3); border-radius: 8px;">
+                    <!-- Stats will be populated by JavaScript -->
+                </div>
+                
+                <!-- Equity Curve Chart -->
+                <div style="margin: 20px 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="color: #e0e0e0; margin: 0;">Equity Curve</h3>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <button id="zoomInBtn" style="padding: 5px 15px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">Zoom In</button>
+                            <button id="zoomOutBtn" style="padding: 5px 15px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">Zoom Out</button>
+                            <button id="resetZoomBtn" style="padding: 5px 15px; background: #43e97b; color: white; border: none; border-radius: 5px; cursor: pointer;">Reset</button>
+                        </div>
+                    </div>
+                    <div style="position: relative; background: rgba(0, 0, 0, 0.2); border-radius: 8px; padding: 10px;">
+                        <canvas id="equityChart" style="width: 100%; height: 500px; cursor: crosshair;"></canvas>
+                        <div id="chartTooltip" style="position: absolute; background: rgba(0, 0, 0, 0.9); color: white; padding: 8px 12px; border-radius: 5px; pointer-events: none; display: none; font-size: 12px; z-index: 1000;"></div>
+                    </div>
+                </div>
+                
+                <!-- Top Stocks -->
+                <div id="topStocksList" style="margin-top: 20px;">
+                    <!-- Top stocks will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <div id="sectorsContainer" class="sectors-grid" style="display: none;"></div>
+
+        <div class="legend">
+            <h3>📊 Understanding Z-Scores</h3>
+            <div class="legend-items">
+                <div class="legend-item">
+                    <div class="legend-color z-positive"></div>
+                    <span><strong>Positive Z-Score:</strong> Trending Market (Higher = More Trending)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color z-negative"></div>
+                    <span><strong>Negative Z-Score:</strong> Mean Reverting Market (Lower = More Mean Reverting)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color z-neutral"></div>
+                    <span><strong>Near Zero:</strong> Neutral/Transitional Market</span>
+                </div>
+            </div>
+            <p style="margin-top: 15px; color: #b0b0b0; font-size: 0.9em;">
+                <strong>MR (Market Regime):</strong> Z-Score from 12 indicators (ADX, ADF, KPSS, ATR, GARCH, Half-Life, Wavelet, PMC, Choppiness, Hurst, PP, Yang). Positive = Trending, Negative = Mean Reverting.<br>
+                <strong>AS (Avg Score):</strong> Z-Score from 22 indicators (RSI, Smooth RSI, ROC, ATR, Stochastic, EMA Score, Main Ratio, Trend Score, OBV, BB, AD, Chaikin, Omega, Sortino, Sharpe, VR, WPR, PVT, ADR, EFI, BB ForLoop, Stoch ForLoop). Positive = Uptrend, Negative = Downtrend.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        console.log('Dashboard script loading...');
+        // Use current host for API URL (works for both localhost and deployed)
+        const API_URL = `${window.location.origin}/analyze`;
+        console.log('API_URL set to:', API_URL);
+
+        function getZScoreClass(z) {
+            if (z > 0.5) return 'z-positive';
+            if (z < -0.5) return 'z-negative';
+            return 'z-neutral';
+        }
+
+        function formatZScore(z) {
+            return z.toFixed(3);
+        }
+
+        // Equity curve zoom state
+        let equityCurveData = null;
+        let zoomState = { start: 0, end: 1 }; // 0-1 range
+        let hoveredPeriod = null; // Track hovered period globally
+        function renderEquityCurve(backtestData) {
+            try {
+                if (!backtestData || !backtestData.equity_curve) {
+                    console.warn('renderEquityCurve: No backtest data or equity curve');
+                    return;
+                }
+                
+                equityCurveData = backtestData;
+                const canvas = document.getElementById('equityChart');
+                if (!canvas) {
+                    console.warn('renderEquityCurve: Canvas element not found');
+                    return;
+                }
+            
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width = canvas.offsetWidth;
+            const height = canvas.height = 500;
+            
+            const equityCurve = backtestData.equity_curve;
+            if (equityCurve.length === 0) return;
+            
+            // Apply zoom
+            const startIdx = Math.floor(zoomState.start * equityCurve.length);
+            const endIdx = Math.ceil(zoomState.end * equityCurve.length);
+            const visibleData = equityCurve.slice(startIdx, endIdx + 1);
+            
+            if (visibleData.length === 0) return;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Convert equity to percentages (from initial capital)
+            const initialCapital = backtestData.initial_capital || 10000;
+            const equityPercentages = visibleData.map(p => ((p.equity - initialCapital) / initialCapital) * 100);
+            
+            // Find min/max for scaling
+            const allValues = [...equityPercentages];
+            const minValue = Math.min(...allValues);
+            const maxValue = Math.max(...allValues);
+            
+            // Add padding to ensure both lines are visible
+            const range = maxValue - minValue || 1;
+            const padding = range * 0.1; // 10% padding
+            
+            // Draw black background (matching legend box)
+            ctx.fillStyle = 'rgba(20, 20, 20, 0.95)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Grid lines removed per user request
+            
+            // Draw asset periods (color-coded background) with hover highlight
+            let currentAsset = null;
+            let assetStartX = 0;
+            let assetStartIdx = 0;
+            const absoluteStartIdx = startIdx; // Store absolute start index
+            
+            // Find rotation points (where trades start/end)
+            const rotationPoints = [];
+            visibleData.forEach((point, index) => {
+                if (point.rotation) {
+                    rotationPoints.push({
+                        index: absoluteStartIdx + index,
+                        x: (width / (visibleData.length - 1)) * index,
+                        asset: point.asset,
+                        date: point.date
+                    });
+                }
+            });
+            
+            // First pass: calculate returns for each trade period using the FULL equity curve data
+            // The backend sets exit_price on rotation points when we exit, and entry_price on rotation points when we enter
+            const periodReturns = new Map();
+            if (!equityCurveData || !equityCurveData.equity_curve) {
+                console.warn('renderEquityCurve: No equity curve data available');
+                return;
+            }
+            const fullEquityCurve = equityCurveData.equity_curve || [];
+            
+            // Process the FULL equity curve to calculate returns for all trades
+            // Track each stock's entry price as we go through the data
+            let currentHoldingAsset = null;
+            let currentHoldingEntryIdx = null;
+            let currentHoldingEntryPrice = null;
+            
+            fullEquityCurve.forEach((point, idx) => {
+                // If we hit a rotation with exit_price, calculate return for the stock we're exiting
+                if (point.rotation && point.exit_price && currentHoldingAsset !== null && currentHoldingEntryPrice !== null) {
+                    // We're exiting currentHoldingAsset - exit_price is on this rotation point
+                    const exitPrice = point.exit_price;
+                    // Use the entry price we tracked when we entered this stock
+                    const entryPrice = currentHoldingEntryPrice;
+                    
+                    if (exitPrice && entryPrice && exitPrice > 0 && exitPrice > 0) {
+                        const periodReturn = ((exitPrice - entryPrice) / entryPrice) * 100;
+                        const periodEndIdx = idx - 1; // Exit happened on previous day
+                        periodReturns.set(`${currentHoldingAsset}_${currentHoldingEntryIdx || 0}_${periodEndIdx}`, {
+                            return: periodReturn,
+                            asset: currentHoldingAsset
+                        });
+                    }
+                }
+                
+                // Track entry when we see a rotation (entering new asset) or first asset
+                if (point.rotation && point.asset && point.asset !== 'CASH' && point.entry_price) {
+                    // We're entering a new stock - track its entry price
+                    currentHoldingAsset = point.asset;
+                    currentHoldingEntryIdx = idx; // This is where we enter (rotation point has entry_price)
+                    currentHoldingEntryPrice = point.entry_price; // Store the entry price directly
+                } else if (currentHoldingAsset === null && point.asset && point.asset !== 'CASH' && point.entry_price) {
+                    // First asset in the equity curve (no rotation marker) - start tracking
+                    currentHoldingAsset = point.asset;
+                    currentHoldingEntryIdx = idx;
+                    currentHoldingEntryPrice = point.entry_price;
+                } else if (point.asset && point.asset !== currentHoldingAsset && point.asset !== 'CASH' && point.entry_price) {
+                    // Asset changed without rotation marker (shouldn't happen, but handle it)
+                    currentHoldingAsset = point.asset;
+                    currentHoldingEntryIdx = idx;
+                    currentHoldingEntryPrice = point.entry_price;
+                } else if (point.asset === 'CASH' && currentHoldingAsset !== null) {
+                    // Entered CASH - clear tracking
+                    currentHoldingAsset = null;
+                    currentHoldingEntryIdx = null;
+                    currentHoldingEntryPrice = null;
+                }
+            });
+            
+            // Handle final period (if still active - no exit_price means we're still holding)
+            if (currentHoldingAsset !== null && currentHoldingEntryPrice !== null) {
+                const lastPoint = fullEquityCurve[fullEquityCurve.length - 1];
+                if (lastPoint.asset === currentHoldingAsset && !lastPoint.exit_price) {
+                    // Still holding - use current_price as exit price
+                    const exitPrice = lastPoint.current_price;
+                    const entryPrice = currentHoldingEntryPrice; // Use the tracked entry price
+                    
+                    if (exitPrice && entryPrice && exitPrice > 0 && entryPrice > 0) {
+                        const periodReturn = ((exitPrice - entryPrice) / entryPrice) * 100;
+                        const periodEndIdx = fullEquityCurve.length - 1;
+                        periodReturns.set(`${currentHoldingAsset}_${currentHoldingEntryIdx || 0}_${periodEndIdx}`, {
+                            return: periodReturn,
+                            asset: currentHoldingAsset
+                        });
+                    }
+                }
+            }
+            
+            // Draw asset periods with always-visible background colors
+            currentAsset = null;
+            assetStartX = 0;
+            assetStartIdx = 0;
+            
+            visibleData.forEach((point, index) => {
+                const x = (width / (visibleData.length - 1)) * index;
+                const absoluteIdx = absoluteStartIdx + index;
+                
+                if (point.asset !== currentAsset || point.rotation) {
+                    if (currentAsset && index > 0) {
+                        const assetEndX = point.rotation ? x : (width / (visibleData.length - 1)) * (index - 1);
+                        const periodStartIdx = absoluteStartIdx + assetStartIdx;
+                        const periodEndIdx = point.rotation ? absoluteIdx - 1 : absoluteStartIdx + index - 1;
+                        
+                        // Get period return for coloring
+                        const periodKey = `${currentAsset}_${periodStartIdx}_${periodEndIdx}`;
+                        const periodInfo = periodReturns.get(periodKey);
+                        
+                        // Check if this period is hovered (for enhanced highlight)
+                        // Match by asset and check if the hovered period overlaps with this period
+                        const isHovered = hoveredPeriod && 
+                                        hoveredPeriod.asset === currentAsset && 
+                                        hoveredPeriod.startIndex <= periodEndIdx && 
+                                        hoveredPeriod.endIndex >= periodStartIdx;
+                        
+                        // Determine background color/gradient - always visible, enhanced on hover
+                        if (currentAsset === 'CASH') {
+                            // White gradient for CASH periods
+                            const cashGradient = ctx.createLinearGradient(assetStartX, 0, assetEndX, 0);
+                            cashGradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+                            cashGradient.addColorStop(1, 'rgba(255, 255, 255, 0.1)');
+                            ctx.fillStyle = cashGradient;
+                            ctx.globalAlpha = isHovered ? 0.5 : 0.25;
+                            ctx.fillRect(assetStartX, 0, assetEndX - assetStartX, height);
+                        } else if (currentAsset && currentAsset !== 'CASH') {
+                            // Calculate return for this period if not in periodReturns
+                            let periodReturn = 0;
+                            // If hovered, use the hovered period's return value
+                            if (isHovered && hoveredPeriod && hoveredPeriod.returnValue !== undefined) {
+                                periodReturn = hoveredPeriod.returnValue;
+                            } else if (periodInfo) {
+                                periodReturn = periodInfo.return;
+                            } else {
+                                // Calculate return from entry/exit prices
+                                const startPoint = visibleData[assetStartIdx];
+                                const endPoint = visibleData[index - 1];
+                                // Look backwards to find the entry price for this asset
+                                let entryPrice = null;
+                                for (let i = assetStartIdx; i >= 0; i--) {
+                                    const checkPoint = visibleData[i];
+                                    if (checkPoint && checkPoint.asset === currentAsset && checkPoint.entry_price) {
+                                        entryPrice = checkPoint.entry_price;
+                                        break;
+                                    } else if (checkPoint && checkPoint.asset !== currentAsset && checkPoint.asset !== 'CASH') {
+                                        break;
+                                    }
+                                }
+                                // If not found in visible data, look in full equity curve
+                                if (!entryPrice) {
+                                    const absStartIdx = absoluteStartIdx + assetStartIdx;
+                                    for (let i = absStartIdx; i >= 0; i--) {
+                                        if (i < fullEquityCurve.length) {
+                                            const fullPoint = fullEquityCurve[i];
+                                            if (fullPoint.asset === currentAsset && fullPoint.entry_price) {
+                                                entryPrice = fullPoint.entry_price;
+                                                break;
+                                            } else if (fullPoint.asset !== currentAsset && fullPoint.asset !== 'CASH') {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Exit price should be from when we exit (on rotation point, or current_price if still holding)
+                                let exitPrice = null;
+                                // Check if there's a rotation point after this period
+                                if (index < visibleData.length && visibleData[index].rotation && visibleData[index].exit_price) {
+                                    // Exit price is on the rotation point
+                                    exitPrice = visibleData[index].exit_price;
+                                } else {
+                                    // No rotation after, use exit_price or current_price from last point
+                                    exitPrice = endPoint?.exit_price || endPoint?.current_price;
+                                }
+                                if (entryPrice && exitPrice && entryPrice > 0 && exitPrice > 0) {
+                                    periodReturn = ((exitPrice - entryPrice) / entryPrice) * 100;
+                                }
+                            }
+                            
+                            // Use gradient for stock periods
+                            const gradient = ctx.createLinearGradient(assetStartX, 0, assetEndX, 0);
+                            if (periodReturn >= 0) {
+                                // Green gradient for positive returns - brighter when hovered
+                                if (isHovered) {
+                                    gradient.addColorStop(0, 'rgba(67, 233, 123, 0.4)');
+                                    gradient.addColorStop(1, 'rgba(67, 233, 123, 0.2)');
+                                } else {
+                                    gradient.addColorStop(0, 'rgba(67, 233, 123, 0.3)');
+                                    gradient.addColorStop(1, 'rgba(67, 233, 123, 0.1)');
+                                }
+                            } else {
+                                // Red gradient for negative returns - brighter when hovered
+                                if (isHovered) {
+                                    gradient.addColorStop(0, 'rgba(250, 112, 154, 0.4)');
+                                    gradient.addColorStop(1, 'rgba(250, 112, 154, 0.2)');
+                                } else {
+                                    gradient.addColorStop(0, 'rgba(250, 112, 154, 0.3)');
+                                    gradient.addColorStop(1, 'rgba(250, 112, 154, 0.1)');
+                                }
+                            }
+                            ctx.fillStyle = gradient;
+                            ctx.globalAlpha = 1.0; // Use gradient opacity directly
+                            ctx.fillRect(assetStartX, 0, assetEndX - assetStartX, height);
+                        }
+                        ctx.globalAlpha = 1.0;
+                    }
+                    currentAsset = point.asset;
+                    assetStartX = x;
+                    assetStartIdx = index;
+                }
+            });
+            
+            // Draw final asset period
+            if (currentAsset) {
+                const periodStartIdx = absoluteStartIdx + assetStartIdx;
+                const periodEndIdx = absoluteStartIdx + visibleData.length - 1;
+                const periodKey = `${currentAsset}_${periodStartIdx}_${periodEndIdx}`;
+                const periodInfo = periodReturns.get(periodKey);
+                
+                const isHovered = hoveredPeriod && 
+                                hoveredPeriod.asset === currentAsset && 
+                                hoveredPeriod.startIndex <= periodEndIdx && 
+                                hoveredPeriod.endIndex >= periodStartIdx;
+                
+                // Determine background color/gradient - always visible, enhanced on hover
+                if (currentAsset === 'CASH') {
+                    // White gradient for CASH periods
+                    const cashGradient = ctx.createLinearGradient(assetStartX, 0, width, 0);
+                    cashGradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+                    cashGradient.addColorStop(1, 'rgba(255, 255, 255, 0.1)');
+                    ctx.fillStyle = cashGradient;
+                    ctx.globalAlpha = isHovered ? 0.5 : 0.25;
+                    ctx.fillRect(assetStartX, 0, width - assetStartX, height);
+                } else if (currentAsset && currentAsset !== 'CASH') {
+                    // Calculate return for this period if not in periodReturns
+                    let periodReturn = 0;
+                    // If hovered, use the hovered period's return value
+                    if (isHovered && hoveredPeriod && hoveredPeriod.returnValue !== undefined) {
+                        periodReturn = hoveredPeriod.returnValue;
+                    } else if (periodInfo) {
+                        periodReturn = periodInfo.return;
+                    } else {
+                        // Calculate return from entry/exit prices
+                        const startPoint = visibleData[assetStartIdx];
+                        const endPoint = visibleData[visibleData.length - 1];
+                        const entryPrice = startPoint?.entry_price;
+                        const exitPrice = endPoint?.exit_price || endPoint?.current_price;
+                        if (entryPrice && exitPrice) {
+                            periodReturn = ((exitPrice - entryPrice) / entryPrice) * 100;
+                        }
+                    }
+                    
+                    // Use gradient for stock periods
+                    const gradient = ctx.createLinearGradient(assetStartX, 0, width, 0);
+                    if (periodReturn >= 0) {
+                        // Green gradient for positive returns - brighter when hovered
+                        if (isHovered) {
+                            gradient.addColorStop(0, 'rgba(67, 233, 123, 0.4)');
+                            gradient.addColorStop(1, 'rgba(67, 233, 123, 0.2)');
+                        } else {
+                            gradient.addColorStop(0, 'rgba(67, 233, 123, 0.3)');
+                            gradient.addColorStop(1, 'rgba(67, 233, 123, 0.1)');
+                        }
+                    } else {
+                        // Red gradient for negative returns - brighter when hovered
+                        if (isHovered) {
+                            gradient.addColorStop(0, 'rgba(250, 112, 154, 0.4)');
+                            gradient.addColorStop(1, 'rgba(250, 112, 154, 0.2)');
+                        } else {
+                            gradient.addColorStop(0, 'rgba(250, 112, 154, 0.3)');
+                            gradient.addColorStop(1, 'rgba(250, 112, 154, 0.1)');
+                        }
+                    }
+                    ctx.fillStyle = gradient;
+                    ctx.globalAlpha = 1.0; // Use gradient opacity directly
+                    ctx.fillRect(assetStartX, 0, width - assetStartX, height);
+                }
+                ctx.globalAlpha = 1.0;
+            }
+            
+            // Draw equity curve with gradient FIRST
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#667eea');
+            gradient.addColorStop(1, '#43e97b');
+            
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = 'rgba(102, 126, 234, 0.5)';
+            ctx.beginPath();
+            
+            equityPercentages.forEach((percent, index) => {
+                const x = (width / (visibleData.length - 1)) * index;
+                const y = height - ((percent - minValue + padding) / (range + padding * 2)) * height;
+                
+                if (index === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            
+            // Draw filled area under curve
+            ctx.fillStyle = gradient;
+            ctx.globalAlpha = 0.2;
+            ctx.lineTo(width, height);
+            ctx.lineTo(0, height);
+            ctx.closePath();
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+            
+            // Draw rotation vertical lines and asset labels ON TOP of everything
+            // Draw ALL rotations (when entering a new asset)
+            // Reuse currentHoldingAsset variable (already declared above)
+            currentHoldingAsset = null;
+            visibleData.forEach((point, index) => {
+                const currentAsset = point.asset || 'CASH';
+                const x = (width / (visibleData.length - 1)) * index;
+                
+                // Check if this is a rotation point (asset changed OR rotation flag is set)
+                const isRotation = point.rotation || (currentHoldingAsset !== null && currentHoldingAsset !== currentAsset && currentAsset !== 'CASH');
+                
+                if (isRotation && currentAsset !== 'CASH') {
+                    // Use rotation_asset if available, otherwise use current asset name
+                    const assetName = point.rotation_asset || currentAsset;
+                    
+                    // Draw vertical line - blue for assets
+                    ctx.strokeStyle = '#667eea';
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, height);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    
+                    // Draw asset name below with background for visibility
+                    ctx.fillStyle = '#141414';
+                    ctx.fillRect(x - 25, height - 20, 50, 18);
+                    ctx.fillStyle = '#667eea';
+                    ctx.font = 'bold 12px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(assetName, x, height - 7);
+                    ctx.textAlign = 'left';
+                }
+                
+                currentHoldingAsset = currentAsset;
+            });
+            
+            // Draw Y-axis labels (in percentages)
+            ctx.fillStyle = '#b0b0b0';
+            ctx.font = '11px Arial';
+            ctx.textAlign = 'left';
+            const numLabels = 5;
+            for (let i = 0; i <= numLabels; i++) {
+                const value = minValue - padding + (maxValue - minValue + padding * 2) * (i / numLabels);
+                const y = height - (i / numLabels) * height;
+                ctx.fillText(value.toFixed(1) + '%', 5, y + 4);
+            }
+            
+            // Draw X-axis date labels (first and last)
+            if (visibleData.length > 0) {
+                ctx.fillStyle = '#b0b0b0';
+                ctx.font = '10px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(visibleData[0].date, 10, height - 25);
+                ctx.textAlign = 'right';
+                ctx.fillText(visibleData[visibleData.length - 1].date, width - 10, height - 25);
+                ctx.textAlign = 'left';
+            }
+            } catch (error) {
+                console.error('Error in renderEquityCurve:', error);
+                throw error; // Re-throw to be caught by caller
+            }
+        }
+        
+        // Zoom controls and S&P 500 toggle
+        document.addEventListener('DOMContentLoaded', function() {
+            const toggleSP500Btn = document.getElementById('toggleSP500Btn');
+            const zoomInBtn = document.getElementById('zoomInBtn');
+            const zoomOutBtn = document.getElementById('zoomOutBtn');
+            const resetZoomBtn = document.getElementById('resetZoomBtn');
+            
+            if (toggleSP500Btn) {
+                toggleSP500Btn.addEventListener('click', () => {
+                    showSP500 = !showSP500;
+                    toggleSP500Btn.textContent = showSP500 ? 'Disable S&P' : 'Enable S&P';
+                    // Change button color: red for Enable, green for Disable (FLIPPED)
+                    if (showSP500) {
+                        toggleSP500Btn.style.background = '#fa709a';
+                        toggleSP500Btn.style.borderColor = '#fa709a';
+                    } else {
+                        toggleSP500Btn.style.background = '#43e97b';
+                        toggleSP500Btn.style.borderColor = '#43e97b';
+                    }
+                    if (equityCurveData) renderEquityCurve(equityCurveData);
+                });
+                // Set initial button state (FLIPPED)
+                if (showSP500) {
+                    toggleSP500Btn.style.background = '#fa709a';
+                    toggleSP500Btn.style.borderColor = '#fa709a';
+                } else {
+                    toggleSP500Btn.style.background = '#43e97b';
+                    toggleSP500Btn.style.borderColor = '#43e97b';
+                }
+            }
+            
+            if (zoomInBtn) {
+                zoomInBtn.addEventListener('click', () => {
+                    const range = zoomState.end - zoomState.start;
+                    const center = zoomState.start + range / 2;
+                    const newRange = range * 0.8; // Zoom in 20%
+                    zoomState.start = Math.max(0, center - newRange / 2);
+                    zoomState.end = Math.min(1, center + newRange / 2);
+                    if (equityCurveData) renderEquityCurve(equityCurveData);
+                });
+            }
+            
+            if (zoomOutBtn) {
+                zoomOutBtn.addEventListener('click', () => {
+                    const range = zoomState.end - zoomState.start;
+                    const center = zoomState.start + range / 2;
+                    const newRange = Math.min(1, range * 1.2); // Zoom out 20%
+                    zoomState.start = Math.max(0, center - newRange / 2);
+                    zoomState.end = Math.min(1, center + newRange / 2);
+                    if (equityCurveData) renderEquityCurve(equityCurveData);
+                });
+            }
+            
+            if (resetZoomBtn) {
+                resetZoomBtn.addEventListener('click', () => {
+                    zoomState = { start: 0, end: 1 };
+                    if (equityCurveData) renderEquityCurve(equityCurveData);
+                });
+            }
+            
+            // Pan with mouse drag and hover effects
+            const canvas = document.getElementById('equityChart');
+            const tooltip = document.getElementById('chartTooltip');
+            if (canvas) {
+                let isDragging = false;
+                let lastX = 0;
+                
+                canvas.addEventListener('mousedown', (e) => {
+                    isDragging = true;
+                    lastX = e.offsetX;
+                });
+                
+                canvas.addEventListener('mousemove', (e) => {
+                    if (isDragging && equityCurveData) {
+                        const delta = (lastX - e.offsetX) / canvas.width;
+                        const range = zoomState.end - zoomState.start;
+                        zoomState.start = Math.max(0, Math.min(1 - range, zoomState.start + delta));
+                        zoomState.end = zoomState.start + range;
+                        renderEquityCurve(equityCurveData);
+                        lastX = e.offsetX;
+                    } else if (!isDragging && equityCurveData) {
+                        // Hover detection
+                        const rect = canvas.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const canvasWidth = canvas.width;
+                        
+                        // Get visible data based on zoom
+                        const equityCurve = equityCurveData.equity_curve;
+                        const startIdx = Math.floor(zoomState.start * equityCurve.length);
+                        const endIdx = Math.ceil(zoomState.end * equityCurve.length);
+                        const visibleData = equityCurve.slice(startIdx, endIdx + 1);
+                        
+                        if (visibleData.length === 0) return;
+                        
+                        const pointIndex = Math.round((x / canvasWidth) * (visibleData.length - 1));
+                        
+                        if (pointIndex >= 0 && pointIndex < visibleData.length) {
+                            const point = visibleData[pointIndex];
+                            
+                            // Find the period this point belongs to
+                            let periodStart = pointIndex;
+                            let periodEnd = pointIndex;
+                            const currentAsset = point.asset;
+                            
+                            // Find start of period
+                            for (let i = pointIndex; i >= 0; i--) {
+                                if (visibleData[i].asset === currentAsset) {
+                                    periodStart = i;
+                                } else {
+                                    break;
+                                }
+                            }
+                            
+                            // Find end of period
+                            for (let i = pointIndex; i < visibleData.length; i++) {
+                                if (visibleData[i].asset === currentAsset) {
+                                    periodEnd = i;
+                                } else {
+                                    break;
+                                }
+                            }
+                            
+                            // Find the trade period boundaries (from rotation to next rotation)
+                            let tradeStartIdx = periodStart;
+                            let tradeEndIdx = periodEnd;
+                            
+                            // Find the rotation point that starts this trade
+                            for (let i = periodStart; i >= 0; i--) {
+                                if (visibleData[i].rotation) {
+                                    tradeStartIdx = i;
+                                    break;
+                                }
+                            }
+                            
+                            // Find the rotation point that ends this trade (or end of data)
+                            let isStillHolding = false;
+                            for (let i = periodEnd + 1; i < visibleData.length; i++) {
+                                if (visibleData[i].rotation) {
+                                    tradeEndIdx = i - 1;
+                                    break;
+                                }
+                            }
+                            // If no rotation found after, it's still holding
+                            if (tradeEndIdx === periodEnd && periodEnd === visibleData.length - 1) {
+                                isStillHolding = true;
+                            }
+                            
+                            // Handle both stock and CASH periods
+                            if (currentAsset && currentAsset !== 'CASH') {
+                                // Find exit price - check if there's an exit_price, otherwise use current_price
+                                let exitPrice = null;
+                                let exitDate = visibleData[tradeEndIdx].date;
+                                
+                                if (isStillHolding) {
+                                    // Still holding - use current price
+                                    exitPrice = visibleData[tradeEndIdx].current_price;
+                                } else {
+                                    // Find exit price - exit_price is on the rotation point (when we enter the new stock)
+                                    if (tradeEndIdx + 1 < visibleData.length && visibleData[tradeEndIdx + 1].rotation && visibleData[tradeEndIdx + 1].exit_price) {
+                                        // Exit price is on the rotation point
+                                        exitPrice = visibleData[tradeEndIdx + 1].exit_price;
+                                    } else {
+                                        // No rotation after, use exit_price or current_price from last point
+                                        exitPrice = visibleData[tradeEndIdx].exit_price || visibleData[tradeEndIdx].current_price;
+                                    }
+                                }
+                                
+                                // Entry price should be from when we entered this stock
+                                // The entry_price should be the same on all points where we're holding this stock
+                                // Use entry_price from any point in the trade period
+                                let entryPrice = null;
+                                // Try to get entry_price from the trade start point
+                                if (visibleData[tradeStartIdx].asset === currentAsset) {
+                                    entryPrice = visibleData[tradeStartIdx].entry_price;
+                                }
+                                // If not found, look at any point in the trade period
+                                if (!entryPrice) {
+                                    for (let i = tradeStartIdx; i <= tradeEndIdx; i++) {
+                                        if (visibleData[i].asset === currentAsset && visibleData[i].entry_price) {
+                                            entryPrice = visibleData[i].entry_price;
+                                            break;
+                                        }
+                                    }
+                                }
+                                // If still not found, look backwards in visible data
+                                if (!entryPrice) {
+                                    for (let i = tradeStartIdx; i >= 0; i--) {
+                                        if (visibleData[i].asset === currentAsset && visibleData[i].entry_price) {
+                                            entryPrice = visibleData[i].entry_price;
+                                            break;
+                                        } else if (visibleData[i].asset !== currentAsset && visibleData[i].asset !== 'CASH') {
+                                            break;
+                                        }
+                                    }
+                                }
+                                // If still not found, look at the full equity curve data (might be before visible range)
+                                if (!entryPrice && equityCurveData && equityCurveData.equity_curve) {
+                                    const fullEquityCurve = equityCurveData.equity_curve;
+                                    const absoluteTradeStartIdx = tradeStartIdx + startIdx;
+                                    for (let i = absoluteTradeStartIdx; i >= 0; i--) {
+                                        if (fullEquityCurve[i] && fullEquityCurve[i].asset === currentAsset && fullEquityCurve[i].entry_price) {
+                                            entryPrice = fullEquityCurve[i].entry_price;
+                                            break;
+                                        } else if (fullEquityCurve[i] && fullEquityCurve[i].asset !== currentAsset && fullEquityCurve[i].asset !== 'CASH') {
+                                            break;
+                                        }
+                                    }
+                                }
+                                const startEquity = visibleData[tradeStartIdx].equity;
+                                const endEquity = visibleData[tradeEndIdx].equity;
+                                
+                                // Calculate return using entry and exit prices
+                                let periodReturn = 0;
+                                if (entryPrice && exitPrice && entryPrice > 0 && exitPrice > 0) {
+                                    periodReturn = ((exitPrice - entryPrice) / entryPrice) * 100;
+                                } else if (startEquity && endEquity && startEquity > 0) {
+                                    // Fallback to equity-based calculation if prices are missing
+                                    periodReturn = ((endEquity - startEquity) / startEquity) * 100;
+                                }
+                                
+                                hoveredPeriod = {
+                                    asset: currentAsset,
+                                    startDate: visibleData[tradeStartIdx].date,
+                                    endDate: exitDate,
+                                    startIndex: tradeStartIdx + startIdx, // Absolute index in full equity curve
+                                    endIndex: tradeEndIdx + startIdx, // Absolute index in full equity curve
+                                    entryPrice: entryPrice,
+                                    exitPrice: exitPrice,
+                                    startEquity: startEquity,
+                                    endEquity: endEquity,
+                                    returnValue: periodReturn,
+                                    isStillHolding: isStillHolding
+                                };
+                                
+                                // Show tooltip
+                                if (tooltip) {
+                                    const returnStr = periodReturn.toFixed(2);
+                                    
+                                    // Calculate system performance (total return % after this trade)
+                                    const initialEquity = equityCurveData.initial_capital || 10000;
+                                    const systemPerformance = ((endEquity - initialEquity) / initialEquity * 100);
+                                    const systemPerformanceStr = systemPerformance.toFixed(2);
+                                    
+                                    tooltip.innerHTML = `
+                                        <strong>${hoveredPeriod.asset}</strong><br>
+                                        Period: ${hoveredPeriod.startDate} to ${hoveredPeriod.endDate}<br>
+                                        ${entryPrice ? `Entry: $${entryPrice.toFixed(2)}<br>` : ''}
+                                        ${exitPrice && !isStillHolding ? `Exit: $${exitPrice.toFixed(2)}<br>` : ''}
+                                        ${isStillHolding ? `<span style="color: #667eea;">Still holding</span><br>Current: $${exitPrice ? exitPrice.toFixed(2) : 'N/A'}<br>` : ''}
+                                        Return: <span style="color: ${periodReturn >= 0 ? '#43e97b' : '#fa709a'}">${returnStr}%</span><br>
+                                        System Performance: <span style="color: ${systemPerformance >= 0 ? '#43e97b' : '#fa709a'}">${systemPerformanceStr}%</span>
+                                    `;
+                                    tooltip.style.display = 'block';
+                                    tooltip.style.left = (e.clientX - rect.left + 10) + 'px';
+                                    tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+                                }
+                                
+                                // Re-render with highlight
+                                renderEquityCurve(equityCurveData);
+                            } else if (currentAsset === 'CASH') {
+                                // CASH period - show flat equity info
+                                const startEquity = visibleData[tradeStartIdx].equity;
+                                const endEquity = visibleData[tradeEndIdx].equity;
+                                
+                                hoveredPeriod = {
+                                    asset: 'CASH',
+                                    startDate: visibleData[tradeStartIdx].date,
+                                    endDate: visibleData[tradeEndIdx].date,
+                                    startIndex: tradeStartIdx + startIdx,
+                                    endIndex: tradeEndIdx + startIdx,
+                                    startEquity: startEquity,
+                                    endEquity: endEquity,
+                                    returnValue: 0,
+                                    isStillHolding: false
+                                };
+                                
+                                if (tooltip) {
+                                    // Calculate system performance for CASH period
+                                    const initialEquity = equityCurveData.initial_capital || 10000;
+                                    const systemPerformance = ((endEquity - initialEquity) / initialEquity * 100);
+                                    const systemPerformanceStr = systemPerformance.toFixed(2);
+                                    
+                                    tooltip.innerHTML = `
+                                        <strong>CASH</strong><br>
+                                        Period: ${hoveredPeriod.startDate} to ${hoveredPeriod.endDate}<br>
+                                        Equity: $${endEquity.toFixed(2)}<br>
+                                        <span style="color: #999;">No position (all scores negative)</span><br>
+                                        System Performance: <span style="color: ${systemPerformance >= 0 ? '#43e97b' : '#fa709a'}">${systemPerformanceStr}%</span>
+                                    `;
+                                    tooltip.style.display = 'block';
+                                    tooltip.style.left = (e.clientX - rect.left + 10) + 'px';
+                                    tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+                                }
+                                
+                                renderEquityCurve(equityCurveData);
+                            } else {
+                                hoveredPeriod = null;
+                                if (tooltip) tooltip.style.display = 'none';
+                                renderEquityCurve(equityCurveData);
+                            }
+                        }
+                    }
+                });
+                
+                canvas.addEventListener('mouseup', () => {
+                    isDragging = false;
+                });
+                
+                canvas.addEventListener('mouseleave', () => {
+                    isDragging = false;
+                    hoveredPeriod = null;
+                    if (tooltip) tooltip.style.display = 'none';
+                    renderEquityCurve(equityCurveData);
+                });
+            }
+        });
+        
+        function getAssetColor(asset) {
+            const colors = ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#fee140', '#30cfd0', '#a8edea'];
+            if (!asset || asset === 'CASH') return '#666';
+            const hash = asset.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+            return colors[hash % colors.length];
+        }
+        
+        function renderBacktestStats(backtestData) {
+            const statsEl = document.getElementById('backtestStats');
+            if (!statsEl || !backtestData) return;
+            
+            statsEl.innerHTML = `
+                <div style="text-align: center;">
+                    <div style="color: #b0b0b0; font-size: 0.9em;">Current Best Asset</div>
+                    <div style="color: #667eea; font-size: 1.5em; font-weight: bold; margin-top: 5px;">
+                        ${backtestData.current_best_asset || 'N/A'}
+                    </div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="color: #b0b0b0; font-size: 0.9em;">Total Return</div>
+                    <div style="color: ${backtestData.total_return >= 0 ? '#43e97b' : '#fa709a'}; font-size: 1.5em; font-weight: bold; margin-top: 5px;">
+                        ${backtestData.total_return.toFixed(2)}%
+                    </div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="color: #b0b0b0; font-size: 0.9em;">Max Drawdown</div>
+                    <div style="color: #fa709a; font-size: 1.5em; font-weight: bold; margin-top: 5px;">
+                        ${backtestData.max_drawdown.toFixed(2)}%
+                    </div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="color: #b0b0b0; font-size: 0.9em;">Max Hold Period</div>
+                    <div style="color: #e0e0e0; font-size: 1.5em; font-weight: bold; margin-top: 5px;">
+                        ${backtestData.max_hold_period} days
+                    </div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="color: #b0b0b0; font-size: 0.9em;">Min Hold Period</div>
+                    <div style="color: #e0e0e0; font-size: 1.5em; font-weight: bold; margin-top: 5px;">
+                        ${backtestData.min_hold_period} days
+                    </div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="color: #b0b0b0; font-size: 0.9em;">Final Equity</div>
+                    <div style="color: #e0e0e0; font-size: 1.5em; font-weight: bold; margin-top: 5px;">
+                        $${backtestData.final_equity.toFixed(2)}
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderRatioAnalysis(ratioData) {
+            const topStocksEl = document.getElementById('topStocksList');
+            if (!topStocksEl || !ratioData) return;
+            
+            let html = '<h3 style="color: #e0e0e0; margin-bottom: 15px;">Top Stocks by Ratio Analysis (Average Z-Score vs All Others)</h3>';
+            html += '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;">';
+            
+            ratioData.top_stocks.forEach((stock, index) => {
+                const ratioScore = stock.ratio_score || stock.avg_score || 0;
+                const scoreClass = getZScoreClass(ratioScore);
+                html += `
+                    <div style="padding: 10px; background: rgba(0, 0, 0, 0.3); border-radius: 5px; text-align: center;">
+                        <div style="font-weight: bold; color: #667eea; font-size: 1.1em;">${stock.ticker}</div>
+                        <div class="stock-z ${scoreClass}" style="margin-top: 5px; display: inline-block; padding: 5px 10px;">
+                            Ratio: ${formatZScore(ratioScore)}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            topStocksEl.innerHTML = html;
+        }
+
+        // Make loadData globally accessible
+        window.loadData = function(forceRefresh = false) {
+            try {
+                console.log('loadData called, forceRefresh:', forceRefresh);
+                const loadingEl = document.getElementById('loading');
+                const errorEl = document.getElementById('error');
+                const containerEl = document.getElementById('sectorsContainer');
+                const ratioContainer = document.getElementById('ratioAnalysisContainer');
+                const refreshBtn = document.getElementById('refreshBtn');
+                const lastUpdateEl = document.getElementById('lastUpdate');
+
+                if (!loadingEl || !errorEl || !containerEl) {
+                    console.error('Required DOM elements not found');
+                    return;
+                }
+
+                // Show loading state
+                loadingEl.style.display = 'block';
+                errorEl.style.display = 'none';
+                containerEl.style.display = 'none';
+                if (refreshBtn) refreshBtn.disabled = true;
+
+                // Add force_refresh parameter if needed
+                const url = forceRefresh ? `${API_URL}?force_refresh=true` : API_URL;
+                console.log('Fetching from URL:', url);
+                
+                fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+
+                    // Sort sectors by combined score (highest first)
+                    data.sectors.sort((a, b) => (b.avg_z + (b.avg_score || 0)) - (a.avg_z + (a.avg_score || 0)));
+
+                    // Render ratio analysis and backtest if available
+                    if (data.ratio_analysis) {
+                        ratioContainer.style.display = 'block';
+                        renderRatioAnalysis(data.ratio_analysis);
+                    }
+                    
+                    if (data.backtest) {
+                        renderBacktestStats(data.backtest);
+                        // Delay equity curve rendering to ensure canvas is ready
+                        setTimeout(() => {
+                            try {
+                                renderEquityCurve(data.backtest);
+                            } catch (e) {
+                                console.error('Error rendering equity curve:', e);
+                                errorEl.textContent = `Error rendering equity curve: ${e.message}`;
+                                errorEl.style.display = 'block';
+                            }
+                        }, 100);
+                    }
+
+                    // Render sectors
+                    containerEl.innerHTML = '';
+                    data.sectors.forEach((sector, sectorIndex) => {
+                        // Sort stocks within sector by combined score (highest first)
+                        sector.stocks.sort((a, b) => (b.z + (b.avg_score || 0)) - (a.z + (a.avg_score || 0)));
+
+                        const sectorCard = document.createElement('div');
+                        sectorCard.className = 'sector-card';
+
+                        const zClass = getZScoreClass(sector.avg_z);
+                        const rank = sectorIndex + 1;
+
+                        const totalStocks = sector.stocks.length;
+                        const topStocks = sector.stocks.slice(0, 5);
+                        const remainingStocks = sector.stocks.slice(5);
+                        const sectorId = `sector-${sectorIndex}`;
+                        
+                        const sectorAvgScore = sector.avg_score || 0;
+                        const sectorAvgScoreClass = getZScoreClass(sectorAvgScore);
+                        
+                        sectorCard.innerHTML = `
+                            <div class="sector-header">
+                                <div>
+                                    <span class="sector-name">${sector.name}</span>
+                                    <span class="rank-badge">#${rank}</span>
+                                </div>
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <div class="sector-z-score ${zClass}">
+                                        MR: ${formatZScore(sector.avg_z)}
+                                    </div>
+                                    <div class="sector-z-score ${sectorAvgScoreClass}">
+                                        AS: ${formatZScore(sectorAvgScore)}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="stock-count">${totalStocks} stocks analyzed</div>
+                            <div class="stocks-list" id="${sectorId}-visible">
+                                ${topStocks.map((stock, stockIndex) => {
+                                    const stockZClass = getZScoreClass(stock.z);
+                                    const stockAvgScore = stock.avg_score || 0;
+                                    const stockAvgScoreClass = getZScoreClass(stockAvgScore);
+                                    return `
+                                        <div class="stock-item">
+                                            <span class="stock-ticker">${stock.ticker}</span>
+                                            <div class="stock-scores">
+                                                <span class="stock-z ${stockZClass}">
+                                                    MR: ${formatZScore(stock.z)}
+                                                </span>
+                                                <span class="stock-z ${stockAvgScoreClass}">
+                                                    AS: ${formatZScore(stockAvgScore)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                            ${remainingStocks.length > 0 ? `
+                                <div class="stocks-list stocks-hidden" id="${sectorId}-hidden">
+                                    ${remainingStocks.map((stock, stockIndex) => {
+                                        const stockZClass = getZScoreClass(stock.z);
+                                        const stockAvgScore = stock.avg_score || 0;
+                                        const stockAvgScoreClass = getZScoreClass(stockAvgScore);
+                                        return `
+                                            <div class="stock-item">
+                                                <span class="stock-ticker">${stock.ticker}</span>
+                                                <div class="stock-scores">
+                                                    <span class="stock-z ${stockZClass}">
+                                                        MR: ${formatZScore(stock.z)}
+                                                    </span>
+                                                    <span class="stock-z ${stockAvgScoreClass}">
+                                                        AS: ${formatZScore(stockAvgScore)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                                <button class="expand-btn" onclick="toggleStocks('${sectorId}')" id="${sectorId}-btn">
+                                    Show ${remainingStocks.length} More Stocks
+                                </button>
+                            ` : ''}
+                        `;
+
+                        containerEl.appendChild(sectorCard);
+                    });
+
+                    // Update last update time
+                    lastUpdateEl.textContent = `Last updated: ${new Date().toLocaleString()}`;
+
+                    // Hide loading, show content
+                    loadingEl.style.display = 'none';
+                    containerEl.style.display = 'grid';
+                })
+                .catch(error => {
+                    console.error('Error loading data:', error);
+                    errorEl.textContent = `Error loading data: ${error.message}. Make sure the Flask server is running on port 5000.`;
+                    errorEl.style.display = 'block';
+                    loadingEl.style.display = 'none';
+                })
+                .finally(() => {
+                    if (refreshBtn) refreshBtn.disabled = false;
+                });
+            } catch (error) {
+                console.error('Error in loadData function:', error);
+                const errorEl = document.getElementById('error');
+                const loadingEl = document.getElementById('loading');
+                if (errorEl) {
+                    errorEl.textContent = `Error: ${error.message}. Check the browser console (F12) for details.`;
+                    errorEl.style.display = 'block';
+                }
+                if (loadingEl) loadingEl.style.display = 'none';
+            }
+        };
+
+        function toggleStocks(sectorId) {
+            const hiddenDiv = document.getElementById(`${sectorId}-hidden`);
+            const btn = document.getElementById(`${sectorId}-btn`);
+            
+            if (hiddenDiv && btn) {
+                if (hiddenDiv.classList.contains('stocks-hidden')) {
+                    hiddenDiv.classList.remove('stocks-hidden');
+                    btn.textContent = 'Show Less';
+                } else {
+                    hiddenDiv.classList.add('stocks-hidden');
+                    const remainingCount = hiddenDiv.querySelectorAll('.stock-item').length;
+                    btn.textContent = `Show ${remainingCount} More Stocks`;
+                }
+            }
+        }
+
+        // Load data on page load
+        // Call loadData when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log('DOMContentLoaded fired, calling loadData()...');
+                loadData();
+            });
+        } else {
+            // DOM is already loaded
+            console.log('Document already loaded, calling loadData() immediately...');
+            loadData();
+        }
+
+        // Auto-refresh disabled - only refresh when user clicks button
+    </script>
+</body>
+</html>
+
