@@ -944,6 +944,20 @@ def health_check():
     """Health check endpoint for Render"""
     return jsonify({"status": "healthy", "service": "stocks-rsps-dashboard"}), 200
 
+# --- Status endpoint to check if /analyze is accessible ---
+@app.route('/status', methods=['GET'])
+def status_check():
+    """Status check endpoint to verify server is responding"""
+    return jsonify({
+        "status": "online",
+        "service": "stocks-rsps-dashboard",
+        "endpoints": {
+            "/analyze": "available",
+            "/health": "available",
+            "/test": "available"
+        }
+    }), 200
+
 # --- Ratio Analysis and Backtesting Functions ---
 
 def calculate_ratio_avg_score(ticker1, ticker2, config):

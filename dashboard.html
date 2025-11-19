@@ -1238,8 +1238,16 @@
                 const url = forceRefresh ? `${API_URL}?force_refresh=true` : API_URL;
                 console.log('Fetching from URL:', url);
                 
-                fetch(url)
+                fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                    },
+                    // Increase timeout for long-running requests
+                    signal: AbortSignal.timeout(900000) // 15 minutes
+                })
                 .then(response => {
+                    console.log('Response status:', response.status, response.statusText);
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
