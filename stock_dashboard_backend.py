@@ -1033,7 +1033,8 @@ def perform_historical_backtest(top_stocks_with_scores, config, initial_capital=
         
         for ticker in top_stocks:
             try:
-                data = yf.download(ticker, period="2y", interval="1d", progress=False)
+                # Use helper function with rate limiting
+                data = download_stock_data(ticker, period="2y", interval="1d", max_retries=3, delay=10.0)
                 if not data.empty:
                     if isinstance(data.columns, pd.MultiIndex):
                         data.columns = data.columns.droplevel(1)
