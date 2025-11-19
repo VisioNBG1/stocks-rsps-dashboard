@@ -1813,18 +1813,33 @@ def get_analysis_results():
         rate_limit_wait = 60  # 60 seconds if rate limited
         
         for idx, ticker in enumerate(all_tickers, 1):
+            print(f"  Starting download {idx}/{len(all_tickers)}: {ticker}", flush=True)
             max_retries = 3
+            download_success = False
             for retry in range(max_retries):
                 try:
-                    print(f"  [{idx}/{len(all_tickers)}] Downloading {ticker}...", flush=True)
+                    print(f"  [{idx}/{len(all_tickers)}] Downloading {ticker} (attempt {retry + 1}/{max_retries})...", flush=True)
                     # Use Ticker class - different API endpoint, potentially less rate-limited
                     ticker_obj = yf.Ticker(ticker)
                     ticker_obj.session = None  # Disable cache
-                    ticker_data = ticker_obj.history(period="2y", interval="1d", timeout=60)
+                    # Add explicit timeout and error handling
+                    import signal
                     
-                    if not ticker_data.empty:
+                    def timeout_handler(signum, frame):
+                        raise TimeoutError(f"Download timeout for {ticker}")
+                    
+                    # Set timeout for download (90 seconds)
+                    ticker_data = None
+                    try:
+                        ticker_data = ticker_obj.history(period="2y", interval="1d", timeout=90)
+                    except Exception as download_ex:
+                        # Re-raise to be caught by outer exception handler
+                        raise download_ex
+                    
+                    if ticker_data is not None and not ticker_data.empty:
                         batch_data[ticker] = ticker_data
-                        print(f"    ✓ {ticker} downloaded successfully", flush=True)
+                        print(f"    ✓ {ticker} downloaded successfully ({len(ticker_data)} rows)", flush=True)
+                        download_success = True
                         break  # Success, move to next ticker
                     else:
                         print(f"    ✗ {ticker} returned empty data", flush=True)
@@ -1860,9 +1875,14 @@ def get_analysis_results():
                             break  # Skip this ticker
                     continue
             
+            if not download_success:
+                print(f"  ⚠ {ticker} failed to download after {max_retries} attempts, continuing to next stock...", flush=True)
+            
             # Wait between downloads (except after the last one)
             if idx < len(all_tickers):
+                print(f"  Waiting {download_delay}s before next download...", flush=True)
                 time.sleep(download_delay)
+                print(f"  Continuing to next stock...", flush=True)
         
         # Check if we got any data
         if not batch_data:
