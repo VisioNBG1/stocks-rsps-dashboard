@@ -9,7 +9,7 @@ from flask import Flask, jsonify, send_from_directory, request
 from flask_cors import CORS
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 
 # --- Flask App Setup ---
@@ -1628,7 +1628,6 @@ def backtest_rotation_strategy(stock_scores_history, initial_capital=10000):
                 # Get exit price (use current day's price)
                 try:
                     # Get data for the specific date (use date and next day to ensure we get the date)
-                    from datetime import timedelta
                     exit_data = download_stock_data(current_asset, start=date, end=date + timedelta(days=1), interval="1d", max_retries=3, delay=0.3)
                     if not exit_data.empty:
                         if isinstance(exit_data.columns, pd.MultiIndex):
@@ -1648,7 +1647,6 @@ def backtest_rotation_strategy(stock_scores_history, initial_capital=10000):
             current_asset = best_ticker
             try:
                 # Get data for the specific date
-                from datetime import timedelta
                 entry_data = download_stock_data(current_asset, start=date, end=date + timedelta(days=1), interval="1d", max_retries=3, delay=0.3)
                 if not entry_data.empty:
                     if isinstance(entry_data.columns, pd.MultiIndex):
