@@ -673,9 +673,12 @@ def calc_avg_score(close, volume, open_price, high, low, config):
             down = 0.0
             for j in range(config['vr_length']):
                 idx = i - j
-                # Check bounds for both idx and idx - 1
+                # Check bounds for both idx and idx - 1 - must check vol length too
                 if idx < 0 or idx >= len(vol) or idx >= len(src):
                     continue  # Skip if index is out of bounds
+                # Additional check: ensure we can access vol at idx
+                if idx < 0 or idx >= len(vol):
+                    continue  # Skip if volume index is out of bounds
                 if idx - 1 < 0 or idx - 1 >= len(src):
                     change = 0  # Can't calculate change if previous index is out of bounds
                 else:
@@ -2002,9 +2005,9 @@ def get_analysis_results():
             print(f"  Total comparisons needed: {total_comparisons}", flush=True)
             sys.stdout.flush()
             
-            # Limit to avoid too many API calls and timeout - compare each stock against top 5 others
-            # Reduced from 50 to 5 to speed up processing and avoid timeouts
-            comparison_limit = min(5, len(all_tickers) - 1)
+            # Limit to avoid too many API calls and timeout - compare each stock against top 10 others
+            # Increased from 5 to 10 for better ratio analysis
+            comparison_limit = min(10, len(all_tickers) - 1)
             
             for i, ticker1 in enumerate(all_tickers):
                 if i % 10 == 0 or i == 0:
