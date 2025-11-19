@@ -1763,7 +1763,11 @@ def get_analysis_results():
         
         # Add a long initial delay to avoid immediate rate limits from Render's IP
         print("  Waiting 60 seconds before first download attempt to avoid rate limits...")
-        time.sleep(60)
+        print(f"  Current time: {time.strftime('%H:%M:%S')}")
+        for i in range(60, 0, -10):
+            print(f"  Waiting... {i} seconds remaining")
+            time.sleep(10)
+        print("  Delay complete, starting downloads...")
         
         # Batch download all stocks at once - much more efficient and reduces API calls
         batch_data = {}
@@ -1776,7 +1780,31 @@ def get_analysis_results():
                     time.sleep(wait_time)
                 
                 print(f"  Downloading batch: {', '.join(all_tickers)}...")
-                batch_df = yf.download(all_tickers, period="2y", interval="1d", progress=False, group_by='ticker')
+                # Try using Ticker objects instead of download() - different API endpoint, less rate-limited
+                try:
+                    # Method 1: Try batch download first
+                    batch_df = yf.download(all_tickers, period="2y", interval="1d", progress=False, group_by='ticker')
+                except Exception as download_error:
+                    # Method 2: Fallback to individual Ticker objects if batch fails
+                    print(f"    Batch download failed: {download_error}")
+                    print(f"    Trying individual Ticker objects instead...")
+                    batch_df = None
+                    # Download individually using Ticker class
+                    for ticker in all_tickers:
+                        try:
+                            ticker_obj = yf.Ticker(ticker)
+                            ticker_data = ticker_obj.history(period="2y", interval="1d")
+                            if not ticker_data.empty:
+                                if batch_df is None:
+                                    batch_df = pd.DataFrame(index=ticker_data.index)
+                                batch_data[ticker] = ticker_data
+                                time.sleep(2)  # 2 second delay between tickers
+                        except Exception as e:
+                            print(f"    Error downloading {ticker} with Ticker: {e}")
+                            continue
+                    
+                    if batch_df is None:
+                        raise Exception("All download methods failed")
                 
                 # yfinance returns data in different formats depending on number of tickers
                 if len(all_tickers) == 1:
