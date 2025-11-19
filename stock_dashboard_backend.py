@@ -1760,13 +1760,17 @@ def get_analysis_results():
         
         print(f"  Downloading data for {len(all_tickers)} stocks in batch (more efficient)...")
         
+        # Add a long initial delay to avoid immediate rate limits from Render's IP
+        print("  Waiting 60 seconds before first download attempt to avoid rate limits...")
+        time.sleep(60)
+        
         # Batch download all stocks at once - much more efficient and reduces API calls
         batch_data = {}
         max_batch_retries = 3
         for batch_attempt in range(max_batch_retries):
             try:
                 if batch_attempt > 0:
-                    wait_time = 30 * (2 ** batch_attempt)  # 30s, 60s, 120s
+                    wait_time = 60 * (batch_attempt + 1)  # 120s, 180s
                     print(f"  Batch download attempt {batch_attempt + 1}/{max_batch_retries}, waiting {wait_time}s...")
                     time.sleep(wait_time)
                 
@@ -1811,7 +1815,9 @@ def get_analysis_results():
                         continue  # Will retry with longer wait
                     else:
                         print(f"  ✗ Batch download failed after {max_batch_retries} attempts due to rate limiting")
-                        print(f"  Falling back to individual downloads with delays...")
+                        print(f"  Waiting 120 seconds before falling back to individual downloads...")
+                        time.sleep(120)
+                        print(f"  Falling back to individual downloads with 10 second delays...")
                         # Fall back to individual downloads
                         batch_data = {}
                         break
@@ -1837,9 +1843,9 @@ def get_analysis_results():
                     if ticker in batch_data and not batch_data[ticker].empty:
                         data = batch_data[ticker]
                     else:
-                        # Fallback: download individually with delays
-                        print(f"    Data not in batch, downloading individually...")
-                        data = download_stock_data(ticker, period="2y", interval="1d", max_retries=3, delay=5.0)
+                        # Fallback: download individually with long delays
+                        print(f"    Data not in batch, downloading individually with 10s delay...")
+                        data = download_stock_data(ticker, period="2y", interval="1d", max_retries=3, delay=10.0)
                     
                     if data.empty:
                         print(f"  No data for {ticker}, skipping.")
