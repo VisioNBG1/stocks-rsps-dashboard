@@ -802,10 +802,14 @@ def analyze_stock(ticker, data, config):
         yang_src_data = data[config['yang_src']] # Using Close, as specified
 
         # 1. ADX
+        print(f"    Calculating ADX...", flush=True)
+        sys.stdout.flush()
         adx_value = calc_adx(h, l, c, config['di_length'], config['adx_smoothing'])
         z_adx = calc_zscore(adx_value, config['z_score_len'])
         
         # 2. KPSS - Calculate rolling KPSS values for z-scoring
+        print(f"    Calculating KPSS...", flush=True)
+        sys.stdout.flush()
         # Only calculate for the last window to match PineScript (which calculates on current bar)
         kpss_series = pd.Series(index=c.index, dtype=float)
         # Fill with NaN initially, then calculate only where we have enough data
@@ -824,6 +828,8 @@ def analyze_stock(ticker, data, config):
         z_kpss = calc_zscore(kpss_series_for_z, config['z_score_len'])
 
         # 3. ADF - Calculate rolling ADF values for z-scoring
+        print(f"    Calculating ADF...", flush=True)
+        sys.stdout.flush()
         adf_series = pd.Series(index=c.index, dtype=float)
         adf_series[:] = np.nan
         for i in range(config['adf_length'], len(adf_src_data)):
@@ -838,10 +844,14 @@ def analyze_stock(ticker, data, config):
         z_adf = calc_zscore(adf_series_for_z, config['z_score_len'])
         
         # 4. GARCH
+        print(f"    Calculating GARCH...", flush=True)
+        sys.stdout.flush()
         garch_vol = calc_garch_vol(c, config['garch_alpha'], config['garch_beta'], config['garch_emaLen'])
         z_garch = calc_zscore(garch_vol, config['z_score_len'])
         
         # 5. Half-Life - Calculate rolling half-life values for z-scoring
+        print(f"    Calculating Half-Life...", flush=True)
+        sys.stdout.flush()
         halflife_series = pd.Series(index=c.index, dtype=float)
         halflife_series[:] = np.nan
         for i in range(config['halflife_lookback'], len(c)):
@@ -855,18 +865,26 @@ def analyze_stock(ticker, data, config):
         z_halflife = calc_zscore(halflife_series_for_z, config['z_score_len']) * -1 # Inverted
         
         # 6. Wavelet
+        print(f"    Calculating Wavelet...", flush=True)
+        sys.stdout.flush()
         wave_vol = calc_wavelet_vol(kpss_src_data, config['wavelet_alpha'], config['wavelet_len'])
         z_wave_vol = calc_zscore(wave_vol, config['z_score_len'])
         
         # 7. Price/Momentum Correlation
+        print(f"    Calculating Price/Momentum Correlation...", flush=True)
+        sys.stdout.flush()
         pmc_corr = calc_pmc_corr(corr_src_data, config['corr_mom_type'], config['corr_length'])
         z_pmc_corr = calc_zscore(pmc_corr, config['z_score_len'])
 
         # 8. Choppiness
+        print(f"    Calculating Choppiness...", flush=True)
+        sys.stdout.flush()
         chop_val = calc_chop(h, l, c, config['chop_length'])
         z_chop = calc_zscore(chop_val, config['z_score_len']) * -1 # Inverted
         
         # 9. Hurst - Calculate rolling Hurst values for z-scoring
+        print(f"    Calculating Hurst (this may take a while)...", flush=True)
+        sys.stdout.flush()
         hurst_series = pd.Series(index=c.index, dtype=float)
         hurst_series[:] = np.nan
         for i in range(config['hurst_length'], len(hurst_src_data)):
