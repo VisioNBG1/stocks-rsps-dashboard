@@ -1368,7 +1368,14 @@
                 })
                 .catch(error => {
                     console.error('Error loading data:', error);
-                    errorEl.textContent = `Error loading data: ${error.message}. Make sure the Flask server is running on port 5000.`;
+                    const isDeployed = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+                    let errorMsg = `Error loading data: ${error.message}`;
+                    if (isDeployed) {
+                        errorMsg += `. The backend service may be starting up (first request can take 30+ seconds on free tier) or there may be an issue with the Render deployment. Check the Render logs for details.`;
+                    } else {
+                        errorMsg += `. Make sure the Flask server is running. Use START_DASHBOARD.bat to start it.`;
+                    }
+                    errorEl.textContent = errorMsg;
                     errorEl.style.display = 'block';
                     loadingEl.style.display = 'none';
                 })

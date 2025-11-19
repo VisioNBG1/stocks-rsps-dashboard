@@ -1660,6 +1660,8 @@ def get_analysis_results():
     It formats the results to match what the frontend expects.
     """
     try:
+        print(f"Received request at /analyze endpoint (PID: {os.getpid()})...")
+        
         # Check if we should use cache or force refresh
         force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
         
@@ -1670,7 +1672,6 @@ def get_analysis_results():
                 print("✓ Loading data from cache...")
                 return jsonify(cached_data)
         
-        print("Received request at /analyze endpoint...")
         if force_refresh:
             print("  Force refresh requested - recalculating all values...")
         
