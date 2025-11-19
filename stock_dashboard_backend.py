@@ -1862,59 +1862,9 @@ def get_analysis_results():
         
         # Check if we got any data
         if not batch_data:
-                    # yfinance returns data in different formats depending on number of tickers
-                    if len(all_tickers) == 1:
-                        # Single ticker - returns simple DataFrame
-                        batch_data[all_tickers[0]] = batch_df
-                    else:
-                        # Multiple tickers - returns MultiIndex DataFrame
-                        # Columns are like: (Open, AAPL), (High, AAPL), (Low, AAPL), (Close, AAPL), etc.
-                        if isinstance(batch_df.columns, pd.MultiIndex):
-                            # Extract each ticker's data
-                            for ticker in all_tickers:
-                                try:
-                                    # Get all columns for this ticker (level=1 is the ticker)
-                                    ticker_cols = [col for col in batch_df.columns if col[1] == ticker]
-                                    if ticker_cols:
-                                        ticker_data = batch_df[ticker_cols]
-                                        # Drop the ticker level from column names
-                                        ticker_data.columns = ticker_data.columns.droplevel(1)
-                                        if not ticker_data.empty:
-                                            batch_data[ticker] = ticker_data
-                                except Exception as e:
-                                    print(f"    Error extracting {ticker} from batch: {e}")
-                                    continue
-                        else:
-                            # Single column structure - shouldn't happen with multiple tickers
-                            # But if it does, assign to first ticker
-                            if not batch_df.empty:
-                                batch_data[all_tickers[0]] = batch_df
-                
-                print(f"  ✓ Successfully downloaded {len(batch_data)}/{len(all_tickers)} stocks")
-                break  # Success, exit retry loop
-                
-            except Exception as e:
-                error_msg = str(e)
-                if "Rate limited" in error_msg or "Too Many Requests" in error_msg or "429" in error_msg or "YFRateLimitError" in error_msg:
-                    if batch_attempt < max_batch_retries - 1:
-                        continue  # Will retry with longer wait
-                    else:
-                        print(f"  ✗ Batch download failed after {max_batch_retries} attempts due to rate limiting")
-                        print(f"  Waiting 120 seconds before falling back to individual downloads...")
-                        time.sleep(120)
-                        print(f"  Falling back to individual downloads with 10 second delays...")
-                        # Fall back to individual downloads
-                        batch_data = {}
-                        break
-                else:
-                    print(f"  ✗ Batch download error: {error_msg}")
-                    if batch_attempt < max_batch_retries - 1:
-                        time.sleep(10)
-                        continue
-                    else:
-                        print(f"  Falling back to individual downloads...")
-                        batch_data = {}
-                        break
+            raise Exception("Failed to download any stock data after multiple attempts.")
+        
+        print(f"  ✓ Successfully downloaded {len(batch_data)}/{len(all_tickers)} stocks")
         
         # Process downloaded data
         results = []
