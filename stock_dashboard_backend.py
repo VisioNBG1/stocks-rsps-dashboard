@@ -899,10 +899,14 @@ def analyze_stock(ticker, data, config):
         z_hurst = calc_zscore(hurst_series_for_z, config['z_score_len'])
         
         # 10. ATR
+        print(f"    Calculating ATR...", flush=True)
+        sys.stdout.flush()
         atr_val = calc_atr(h, l, c, config['atr_length1'])
         z_atr = calc_zscore(atr_val, config['z_score_len'])
         
         # 11. Phillips-Perron - Calculate rolling PP values for z-scoring
+        print(f"    Calculating Phillips-Perron (this may take a while)...", flush=True)
+        sys.stdout.flush()
         pp_series = pd.Series(index=c.index, dtype=float)
         pp_series[:] = np.nan
         for i in range(config['pp_length'], len(pp_src_data)):
