@@ -154,7 +154,7 @@ CONFIG = {
 # TEMPORARY: Using 1 stock per sector for faster testing
 # REMOVED STOCKS (to restore later): MSFT, CVX, JNJ, CAT, SO, KO, BAC, TSLA, PLD, APD, META
 # --- Helper function for downloading stock data with rate limiting and retries ---
-def download_stock_data(ticker, period=None, interval="1d", start=None, end=None, max_retries=3, delay=0.5):
+def download_stock_data(ticker, period="2y", interval="1d", start=None, end=None, max_retries=3, delay=0.5):
     """
     Download stock data with rate limiting and retry logic.
     
@@ -184,11 +184,9 @@ def download_stock_data(ticker, period=None, interval="1d", start=None, end=None
             # Use start/end if provided, otherwise use period
             if start is not None and end is not None:
                 data = yf.download(ticker, start=start, end=end, interval=interval, progress=False, show_errors=False)
-            elif period is not None:
-                data = yf.download(ticker, period=period, interval=interval, progress=False, show_errors=False)
             else:
-                # Default to 2y if nothing specified
-                data = yf.download(ticker, period="2y", interval=interval, progress=False, show_errors=False)
+                # Use period (defaults to "2y" if not specified)
+                data = yf.download(ticker, period=period, interval=interval, progress=False, show_errors=False)
             
             if not data.empty:
                 return data
@@ -1919,10 +1917,30 @@ def get_analysis_results():
         return jsonify(response_data)
         
     except Exception as e:
-        print(f"\n✗ Fatal error in /analyze endpoint: {str(e)}")
+        import sys
         import traceback
-        traceback.print_exc()
-        return jsonify({"error": f"Server error: {str(e)}"}), 500
+        error_type = type(e).__name__
+        error_msg = str(e)
+        tb_str = traceback.format_exc()
+        
+        # Print to stdout (visible in Render logs)
+        print(f"\n{'='*60}")
+        print(f"✗ FATAL ERROR in /analyze endpoint")
+        print(f"{'='*60}")
+        print(f"Error Type: {error_type}")
+        print(f"Error Message: {error_msg}")
+        print(f"\nFull Traceback:")
+        print(tb_str)
+        print(f"{'='*60}\n")
+        
+        # Also print to stderr
+        print(tb_str, file=sys.stderr)
+        
+        # Return error response
+        return jsonify({
+            "error": f"Server error: {error_msg}",
+            "error_type": error_type
+        }), 500
 
 
 # --- Run Flask Server ---
