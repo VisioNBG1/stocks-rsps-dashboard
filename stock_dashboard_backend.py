@@ -1660,7 +1660,11 @@ def get_analysis_results():
     It formats the results to match what the frontend expects.
     """
     try:
+        import time
+        start_time = time.time()
+        print(f"\n{'='*60}")
         print(f"Received request at /analyze endpoint (PID: {os.getpid()})...")
+        print(f"{'='*60}")
         
         # Check if we should use cache or force refresh
         force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
@@ -1669,11 +1673,14 @@ def get_analysis_results():
         if not force_refresh:
             cached_data = load_cache()
             if cached_data:
-                print("✓ Loading data from cache...")
+                elapsed = time.time() - start_time
+                print(f"✓ Loading data from cache... (took {elapsed:.2f}s)")
                 return jsonify(cached_data)
         
         if force_refresh:
             print("  Force refresh requested - recalculating all values...")
+        else:
+            print("  No cache found - calculating fresh data (this may take 3-5 minutes)...")
         
         results = []
         for sector, tickers in SECTORS.items():
@@ -1834,6 +1841,11 @@ def get_analysis_results():
         
         # Save to cache
         save_cache(response_data)
+        
+        elapsed = time.time() - start_time
+        print(f"\n{'='*60}")
+        print(f"✓ Analysis complete! Total time: {elapsed:.2f}s ({elapsed/60:.2f} minutes)")
+        print(f"{'='*60}\n")
         
         return jsonify(response_data)
         
