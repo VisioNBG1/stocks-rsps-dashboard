@@ -1878,14 +1878,18 @@ def get_analysis_results():
             raise Exception("Failed to download any stock data after multiple attempts.")
         
         print(f"  ✓ Successfully downloaded {len(batch_data)}/{len(all_tickers)} stocks", flush=True)
+        print(f"  Starting to process {len(batch_data)} downloaded stocks...", flush=True)
+        sys.stdout.flush()
         
         # Process downloaded data
         results = []
         for sector, tickers in SECTORS.items():
-            print(f"\n--- Processing Sector: {sector} ---")
+            print(f"\n--- Processing Sector: {sector} ---", flush=True)
+            sys.stdout.flush()
             for ticker in tickers:
                 try:
-                    print(f"  Analyzing {ticker}...")
+                    print(f"  Analyzing {ticker}...", flush=True)
+                    sys.stdout.flush()
                     
                     # Get data from batch or download individually
                     if ticker in batch_data and not batch_data[ticker].empty:
@@ -1914,18 +1918,25 @@ def get_analysis_results():
                             "z_avg": z_avg,
                             "avg_score": avg_score
                         })
-                        print(f"  ✓ {ticker}: z_avg = {z_avg:.3f}, avg_score = {avg_score:.3f}")
+                        print(f"  ✓ {ticker}: z_avg = {z_avg:.3f}, avg_score = {avg_score:.3f}", flush=True)
+                        sys.stdout.flush()
                     else:
-                        print(f"  ✗ {ticker}: Failed to calculate scores")
+                        print(f"  ✗ {ticker}: Failed to calculate scores", flush=True)
+                        sys.stdout.flush()
                         
                 except Exception as e:
-                    print(f"  ✗ Error processing {ticker}: {str(e)}")
+                    print(f"  ✗ Error processing {ticker}: {str(e)}", flush=True)
                     import traceback
-                    traceback.print_exc()
+                    traceback.print_exc(file=sys.stderr)
+                    sys.stderr.flush()
                     continue
 
+        print(f"\n✓ Finished processing {len(results)} stocks", flush=True)
+        sys.stdout.flush()
+        
         if not results:
-            print("\n⚠ No results calculated - returning error")
+            print("\n⚠ No results calculated - returning error", flush=True)
+            sys.stdout.flush()
             return jsonify({"error": "No results calculated. Check server logs for details."}), 500
             
         # --- Format data ---
@@ -1966,27 +1977,31 @@ def get_analysis_results():
         output_sectors.sort(key=lambda x: x['avg_z'] + x['avg_score'], reverse=True)
 
         # --- Ratio Analysis and Backtesting ---
-        print("\n--- Starting Ratio Analysis and Backtesting ---")
+        print("\n--- Starting Ratio Analysis and Backtesting ---", flush=True)
+        sys.stdout.flush()
         ratio_analysis = None
         backtest_results = None
         
         try:
             # Get all unique tickers - SORT for deterministic results
             all_tickers = sorted(list(results_df['ticker'].unique()))
-            print(f"  Calculating ratio analysis for {len(all_tickers)} stocks...")
+            print(f"  Calculating ratio analysis for {len(all_tickers)} stocks...", flush=True)
+            sys.stdout.flush()
             
             # Calculate ratio scores: each stock against all others
             ratio_scores = {}
             total_comparisons = len(all_tickers) * (len(all_tickers) - 1)
-            print(f"  Total comparisons needed: {total_comparisons}")
+            print(f"  Total comparisons needed: {total_comparisons}", flush=True)
+            sys.stdout.flush()
             
             # Limit to avoid too many API calls and timeout - compare each stock against top 5 others
             # Reduced from 50 to 5 to speed up processing and avoid timeouts
             comparison_limit = min(5, len(all_tickers) - 1)
             
             for i, ticker1 in enumerate(all_tickers):
-                if i % 10 == 0:
-                    print(f"  Progress: {i}/{len(all_tickers)} stocks analyzed...")
+                if i % 10 == 0 or i == 0:
+                    print(f"  Progress: {i}/{len(all_tickers)} stocks analyzed...", flush=True)
+                    sys.stdout.flush()
                 
                 ratio_z_scores = []
                 comparisons_made = 0
@@ -2005,7 +2020,8 @@ def get_analysis_results():
                         if ratio_score is not None:
                             ratio_z_scores.append(ratio_score)
                     except Exception as e:
-                        print(f"    Error calculating ratio for {ticker1}/{ticker2}: {e}")
+                        print(f"    Error calculating ratio for {ticker1}/{ticker2}: {e}", flush=True)
+                        sys.stdout.flush()
                         # Continue with next comparison
                     
                     comparisons_made += 1
@@ -2014,7 +2030,8 @@ def get_analysis_results():
                     # Average z-score from all ratio comparisons
                     avg_ratio_score = sum(ratio_z_scores) / len(ratio_z_scores)
                     ratio_scores[ticker1] = avg_ratio_score
-                    print(f"  {ticker1}: {avg_ratio_score:.3f} (from {len(ratio_z_scores)} comparisons)")
+                    print(f"  {ticker1}: {avg_ratio_score:.3f} (from {len(ratio_z_scores)} comparisons)", flush=True)
+                    sys.stdout.flush()
             
             # Sort by ratio score
             sorted_ratio_stocks = sorted(ratio_scores.items(), key=lambda x: x[1], reverse=True)
@@ -2031,9 +2048,10 @@ def get_analysis_results():
             }
             
         except Exception as e:
-            print(f"  [!] Error in ratio analysis/backtesting: {e}")
+            print(f"  [!] Error in ratio analysis/backtesting: {e}", flush=True)
             import traceback
-            traceback.print_exc()
+            traceback.print_exc(file=sys.stderr)
+            sys.stderr.flush()
 
         print(f"\n✓ Analysis complete. Processed {len(results)} stocks across {len(output_sectors)} sectors.")
         print("Sending JSON response to frontend.")
