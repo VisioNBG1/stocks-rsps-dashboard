@@ -1238,13 +1238,16 @@
                 const url = forceRefresh ? `${API_URL}?force_refresh=true` : API_URL;
                 console.log('Fetching from URL:', url);
                 
+                // Create abort controller for timeout (15 minutes)
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 900000); // 15 minutes
+                
                 fetch(url, {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json',
                     },
-                    // Increase timeout for long-running requests
-                    signal: AbortSignal.timeout(900000) // 15 minutes
+                    signal: controller.signal
                 })
                 .then(response => {
                     console.log('Response status:', response.status, response.statusText);
@@ -1375,11 +1378,14 @@
                     containerEl.style.display = 'grid';
                 })
                 .catch(error => {
+                    clearTimeout(timeoutId); // Clear timeout on error
                     console.error('Error loading data:', error);
                     const isDeployed = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
                     let errorMsg = `Error loading data: ${error.message}`;
-                    if (isDeployed) {
-                        errorMsg += `. The backend service may be starting up (first request can take 30+ seconds on free tier) or there may be an issue with the Render deployment. Check the Render logs for details.`;
+                    if (error.name === 'AbortError') {
+                        errorMsg = `Request timed out after 15 minutes. The analysis is taking longer than expected. Please try again or check Render logs.`;
+                    } else if (isDeployed) {
+                        errorMsg += `. The backend service may be starting up (first request can take 3-5 minutes on free tier) or there may be an issue with the Render deployment. Check the Render logs for details.`;
                     } else {
                         errorMsg += `. Make sure the Flask server is running. Use START_DASHBOARD.bat to start it.`;
                     }
