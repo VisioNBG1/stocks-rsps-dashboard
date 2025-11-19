@@ -1851,6 +1851,7 @@ def get_analysis_results():
                         raise download_error
                 
                 # Only process batch_df if we got it from batch download (not from Ticker fallback)
+                # This ensures we don't process batch_df if we already have data from Ticker fallback
                 if batch_df is not None and not batch_data:
                     # yfinance returns data in different formats depending on number of tickers
                     if len(all_tickers) == 1:
