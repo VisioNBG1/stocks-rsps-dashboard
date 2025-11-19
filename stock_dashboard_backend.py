@@ -775,6 +775,7 @@ def analyze_stock(ticker, data, config):
     Runs the full 12-factor analysis on a single stock's data.
     Returns the final z_avg score.
     """
+    import sys  # Import sys for flush operations
     try:
         # Ensure we have enough data
         if len(data) < max(config['z_score_len'], config['pp_length'], config['hurst_length']):
