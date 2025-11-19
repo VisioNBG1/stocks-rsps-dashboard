@@ -1854,9 +1854,9 @@ def get_analysis_results():
                 if batch_df is not None and not batch_data:
                     # yfinance returns data in different formats depending on number of tickers
                     if len(all_tickers) == 1:
-                    # Single ticker - returns simple DataFrame
-                    batch_data[all_tickers[0]] = batch_df
-                else:
+                        # Single ticker - returns simple DataFrame
+                        batch_data[all_tickers[0]] = batch_df
+                    else:
                     # Multiple tickers - returns MultiIndex DataFrame
                     # Columns are like: (Open, AAPL), (High, AAPL), (Low, AAPL), (Close, AAPL), etc.
                     if isinstance(batch_df.columns, pd.MultiIndex):
