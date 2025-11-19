@@ -2053,8 +2053,9 @@ def get_analysis_results():
             traceback.print_exc(file=sys.stderr)
             sys.stderr.flush()
 
-        print(f"\n✓ Analysis complete. Processed {len(results)} stocks across {len(output_sectors)} sectors.")
-        print("Sending JSON response to frontend.")
+        print(f"\n✓ Analysis complete. Processed {len(results)} stocks across {len(output_sectors)} sectors.", flush=True)
+        print("Sending JSON response to frontend.", flush=True)
+        sys.stdout.flush()
         
         response_data = {
             "sectors": output_sectors,
