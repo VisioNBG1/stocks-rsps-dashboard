@@ -1,2 +1,2 @@
-web: gunicorn stock_dashboard_backend:app
+web: gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 stock_dashboard_backend:app
 

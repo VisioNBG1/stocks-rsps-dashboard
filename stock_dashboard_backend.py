@@ -857,6 +857,12 @@ def test_endpoint():
     """Simple test endpoint to verify server is running"""
     return jsonify({"status": "Server is running!", "message": "Flask backend is operational"})
 
+# --- Health check endpoint for Render ---
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for Render"""
+    return jsonify({"status": "healthy", "service": "stocks-rsps-dashboard"}), 200
+
 # --- Ratio Analysis and Backtesting Functions ---
 
 def calculate_ratio_avg_score(ticker1, ticker2, config):
