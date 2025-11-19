@@ -1792,85 +1792,76 @@ def get_analysis_results():
                 all_tickers.append(ticker)
                 ticker_to_sector[ticker] = sector
         
-        print(f"  Downloading data for {len(all_tickers)} stocks in batch (more efficient)...")
+        print(f"  Downloading data for {len(all_tickers)} stocks individually (to avoid rate limits)...")
         
-        # Add initial delay to avoid immediate rate limits from Render's IP
-        # Reduced from 60s to 10s - if rate limited, will retry with longer delays
-        print("  Waiting 10 seconds before first download attempt to avoid rate limits...")
-        time.sleep(10)
-        print("  Delay complete, starting downloads...")
+        # Add a long initial delay to avoid immediate rate limits from Render's IP
+        # Render's IP may already be rate-limited from previous attempts
+        print("  Waiting 120 seconds before first download attempt to avoid rate limits...")
+        for i in range(120, 0, -10):
+            print(f"  Waiting... {i}s remaining", end='\r', flush=True)
+            time.sleep(10)
+        print("\n  Delay complete, starting individual downloads with 20s delays...")
         
-        # Batch download all stocks at once - much more efficient and reduces API calls
+        # Skip batch download entirely - use individual downloads from the start
+        # This is slower but more reliable for rate-limited IPs
         batch_data = {}
-        max_batch_retries = 3
-        for batch_attempt in range(max_batch_retries):
-            try:
-                if batch_attempt > 0:
-                    wait_time = 60 * (batch_attempt + 1)  # 120s, 180s
-                    print(f"  Batch download attempt {batch_attempt + 1}/{max_batch_retries}, waiting {wait_time}s...")
-                    time.sleep(wait_time)
-                
-                print(f"  Downloading batch: {', '.join(all_tickers)}...")
-                # Try using Ticker objects instead of download() - different API endpoint, less rate-limited
-                batch_df = None
+        download_delay = 20  # 20 seconds between downloads
+        rate_limit_wait = 60  # 60 seconds if rate limited
+        
+        for idx, ticker in enumerate(all_tickers, 1):
+            max_retries = 3
+            for retry in range(max_retries):
                 try:
-                    # Method 1: Try batch download first
-                    batch_df = yf.download(all_tickers, period="2y", interval="1d", progress=False, group_by='ticker')
-                except Exception as download_error:
-                    # Method 2: Fallback to individual Ticker objects if batch fails
-                    error_msg = str(download_error)
-                    print(f"    Batch download failed: {error_msg}")
-                    if "Rate limited" in error_msg or "Too Many Requests" in error_msg or "YFRateLimitError" in error_msg:
-                        print(f"    Rate limited - trying individual Ticker objects with delays...")
-                        # Download individually using Ticker class
-                        for ticker in all_tickers:
-                            try:
-                                print(f"      Downloading {ticker}...")
-                                # Disable cache for this ticker
-                                ticker_obj = yf.Ticker(ticker)
-                                # Use session to avoid cache issues
-                                ticker_obj.session = None
-                                ticker_data = ticker_obj.history(period="2y", interval="1d", timeout=30)
-                                if not ticker_data.empty:
-                                    batch_data[ticker] = ticker_data
-                                    print(f"      ✓ {ticker} downloaded")
-                                else:
-                                    print(f"      ✗ {ticker} returned empty data")
-                                time.sleep(10)  # 10 second delay between tickers to avoid rate limits
-                            except Exception as e:
-                                error_msg = str(e)
-                                if "Rate limited" in error_msg or "Too Many Requests" in error_msg or "YFRateLimitError" in error_msg:
-                                    print(f"      ✗ {ticker} rate limited, waiting 30s before next...")
-                                    time.sleep(30)
-                                elif "database is locked" in error_msg.lower():
-                                    print(f"      ✗ {ticker} cache locked, retrying in 5s...")
-                                    time.sleep(5)
-                                    # Retry once
-                                    try:
-                                        ticker_obj = yf.Ticker(ticker)
-                                        ticker_data = ticker_obj.history(period="2y", interval="1d", timeout=30)
-                                        if not ticker_data.empty:
-                                            batch_data[ticker] = ticker_data
-                                            print(f"      ✓ {ticker} downloaded on retry")
-                                    except:
-                                        print(f"      ✗ {ticker} failed on retry")
-                                else:
-                                    print(f"      ✗ Error downloading {ticker}: {error_msg}")
-                                continue
-                        
-                        # If we got some data, continue processing
-                        if batch_data:
-                            print(f"  ✓ Downloaded {len(batch_data)}/{len(all_tickers)} stocks using Ticker method")
-                            # Skip the batch_df processing and go straight to individual processing
-                            break
-                        else:
-                            raise Exception("All download methods failed - no data retrieved")
+                    print(f"  [{idx}/{len(all_tickers)}] Downloading {ticker}...", flush=True)
+                    # Use Ticker class - different API endpoint, potentially less rate-limited
+                    ticker_obj = yf.Ticker(ticker)
+                    ticker_obj.session = None  # Disable cache
+                    ticker_data = ticker_obj.history(period="2y", interval="1d", timeout=60)
+                    
+                    if not ticker_data.empty:
+                        batch_data[ticker] = ticker_data
+                        print(f"    ✓ {ticker} downloaded successfully", flush=True)
+                        break  # Success, move to next ticker
                     else:
-                        raise download_error
-                
-                # Only process batch_df if we got it from batch download (not from Ticker fallback)
-                # This ensures we don't process batch_df if we already have data from Ticker fallback
-                if batch_df is not None and not batch_data:
+                        print(f"    ✗ {ticker} returned empty data", flush=True)
+                        if retry < max_retries - 1:
+                            print(f"    Retrying in 10s...", flush=True)
+                            time.sleep(10)
+                        continue
+                        
+                except Exception as e:
+                    error_msg = str(e)
+                    if "Rate limited" in error_msg or "Too Many Requests" in error_msg or "429" in error_msg or "YFRateLimitError" in error_msg:
+                        if retry < max_retries - 1:
+                            wait_time = rate_limit_wait * (retry + 1)  # 60s, 120s, 180s
+                            print(f"    ✗ {ticker} rate limited, waiting {wait_time}s before retry...", flush=True)
+                            time.sleep(wait_time)
+                        else:
+                            print(f"    ✗ {ticker} rate limited after {max_retries} attempts, skipping...", flush=True)
+                            break  # Skip this ticker
+                    elif "database is locked" in error_msg.lower():
+                        if retry < max_retries - 1:
+                            print(f"    ✗ {ticker} cache locked, retrying in 10s...", flush=True)
+                            time.sleep(10)
+                        else:
+                            print(f"    ✗ {ticker} cache locked after {max_retries} attempts, skipping...", flush=True)
+                            break  # Skip this ticker
+                    else:
+                        print(f"    ✗ Error downloading {ticker}: {error_msg}", flush=True)
+                        if retry < max_retries - 1:
+                            print(f"    Retrying in 10s...", flush=True)
+                            time.sleep(10)
+                        else:
+                            print(f"    ✗ {ticker} failed after {max_retries} attempts, skipping...", flush=True)
+                            break  # Skip this ticker
+                    continue
+            
+            # Wait between downloads (except after the last one)
+            if idx < len(all_tickers):
+                time.sleep(download_delay)
+        
+        # Check if we got any data
+        if not batch_data:
                     # yfinance returns data in different formats depending on number of tickers
                     if len(all_tickers) == 1:
                         # Single ticker - returns simple DataFrame
