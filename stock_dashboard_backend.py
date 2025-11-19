@@ -2041,12 +2041,16 @@ def get_analysis_results():
                     
                     # Calculate ratio avg_score (ticker1/ticker2)
                     try:
+                        print(f"    Comparing {ticker1}/{ticker2} ({comparisons_made + 1}/{comparison_limit})...", flush=True)
+                        sys.stdout.flush()
                         # Pass batch_data as cache to avoid re-downloading
                         ratio_score = calculate_ratio_avg_score(ticker1, ticker2, CONFIG, data_cache=batch_data)
                         if ratio_score is not None:
                             ratio_z_scores.append(ratio_score)
+                            print(f"      ✓ {ticker1}/{ticker2}: {ratio_score:.3f}", flush=True)
+                            sys.stdout.flush()
                     except Exception as e:
-                        print(f"    Error calculating ratio for {ticker1}/{ticker2}: {e}", flush=True)
+                        print(f"    ✗ Error calculating ratio for {ticker1}/{ticker2}: {e}", flush=True)
                         sys.stdout.flush()
                         # Continue with next comparison
                     
