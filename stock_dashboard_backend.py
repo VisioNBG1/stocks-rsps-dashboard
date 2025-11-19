@@ -10,6 +10,7 @@ from flask_cors import CORS
 import os
 import json
 from datetime import datetime
+import time
 
 # --- Flask App Setup ---
 app = Flask(__name__)
@@ -152,6 +153,71 @@ CONFIG = {
 
 # TEMPORARY: Using 1 stock per sector for faster testing
 # REMOVED STOCKS (to restore later): MSFT, CVX, JNJ, CAT, SO, KO, BAC, TSLA, PLD, APD, META
+# --- Helper function for downloading stock data with rate limiting and retries ---
+def download_stock_data(ticker, period=None, interval="1d", start=None, end=None, max_retries=3, delay=0.5):
+    """
+    Download stock data with rate limiting and retry logic.
+    
+    Args:
+        ticker: Stock ticker symbol
+        period: Data period (e.g., "2y", "1d") - used if start/end not provided
+        interval: Data interval (default: "1d")
+        start: Start date (datetime or string) - alternative to period
+        end: End date (datetime or string) - alternative to period
+        max_retries: Maximum number of retry attempts (default: 3)
+        delay: Initial delay between requests in seconds (default: 0.5)
+    
+    Returns:
+        pandas.DataFrame: Stock data or empty DataFrame if failed
+    """
+    for attempt in range(max_retries):
+        try:
+            # Add delay to avoid rate limiting (longer delay for retries)
+            if attempt > 0:
+                wait_time = delay * (2 ** attempt)  # Exponential backoff
+                print(f"    Retrying {ticker} (attempt {attempt + 1}/{max_retries}) after {wait_time:.1f}s...")
+                time.sleep(wait_time)
+            else:
+                # Small delay even on first attempt to avoid rate limits
+                time.sleep(delay)
+            
+            # Use start/end if provided, otherwise use period
+            if start is not None and end is not None:
+                data = yf.download(ticker, start=start, end=end, interval=interval, progress=False, show_errors=False)
+            elif period is not None:
+                data = yf.download(ticker, period=period, interval=interval, progress=False, show_errors=False)
+            else:
+                # Default to 2y if nothing specified
+                data = yf.download(ticker, period="2y", interval=interval, progress=False, show_errors=False)
+            
+            if not data.empty:
+                return data
+            else:
+                print(f"    No data returned for {ticker}")
+                return pd.DataFrame()
+                
+        except Exception as e:
+            error_msg = str(e)
+            # Check if it's a rate limit error
+            if "Rate limited" in error_msg or "Too Many Requests" in error_msg or "429" in error_msg or "YFRateLimitError" in error_msg:
+                if attempt < max_retries - 1:
+                    wait_time = delay * (2 ** (attempt + 2))  # Longer wait for rate limits (2, 4, 8 seconds)
+                    print(f"    Rate limited for {ticker}. Waiting {wait_time:.1f}s before retry...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    print(f"    ✗ Rate limit error for {ticker} after {max_retries} attempts. Skipping.")
+                    return pd.DataFrame()
+            else:
+                # Other errors - log and return empty
+                print(f"    ✗ Error downloading {ticker}: {error_msg}")
+                if attempt < max_retries - 1:
+                    time.sleep(delay * (attempt + 1))
+                else:
+                    return pd.DataFrame()
+    
+    return pd.DataFrame()
+
 SECTORS = {
     "Technology": ["AAPL"],
     "Energy": ["XOM"],
@@ -869,8 +935,9 @@ def calculate_ratio_avg_score(ticker1, ticker2, config):
     """Calculate avg_score for a ratio of two stocks (ticker1/ticker2)"""
     try:
         # Download data for both stocks
-        data1 = yf.download(ticker1, period="2y", interval="1d", progress=False)
-        data2 = yf.download(ticker2, period="2y", interval="1d", progress=False)
+        data1 = download_stock_data(ticker1, period="2y", interval="1d", max_retries=3, delay=0.5)
+        time.sleep(0.5)  # Delay between requests
+        data2 = download_stock_data(ticker2, period="2y", interval="1d", max_retries=3, delay=0.5)
         
         if data1.empty or data2.empty:
             return None
@@ -1459,7 +1526,7 @@ def perform_historical_backtest(top_stocks_with_scores, config, initial_capital=
         try:
             print("  Fetching S&P 500 data for comparison...")
             # Fetch more data to ensure we have coverage
-            sp500 = yf.download("^GSPC", period="3y", interval="1d", progress=False)
+            sp500 = download_stock_data("^GSPC", period="3y", interval="1d", max_retries=3, delay=0.5)
             if not sp500.empty:
                 # Handle MultiIndex columns
                 if isinstance(sp500.columns, pd.MultiIndex):
@@ -1560,7 +1627,9 @@ def backtest_rotation_strategy(stock_scores_history, initial_capital=10000):
             if current_asset is not None and entry_price is not None:
                 # Get exit price (use current day's price)
                 try:
-                    exit_data = yf.download(current_asset, start=date, end=date, interval="1d", progress=False)
+                    # Get data for the specific date (use date and next day to ensure we get the date)
+                    from datetime import timedelta
+                    exit_data = download_stock_data(current_asset, start=date, end=date + timedelta(days=1), interval="1d", max_retries=3, delay=0.3)
                     if not exit_data.empty:
                         if isinstance(exit_data.columns, pd.MultiIndex):
                             exit_data.columns = exit_data.columns.droplevel(1)
@@ -1578,7 +1647,9 @@ def backtest_rotation_strategy(stock_scores_history, initial_capital=10000):
             # Enter new position
             current_asset = best_ticker
             try:
-                entry_data = yf.download(current_asset, start=date, end=date, interval="1d", progress=False)
+                # Get data for the specific date
+                from datetime import timedelta
+                entry_data = download_stock_data(current_asset, start=date, end=date + timedelta(days=1), interval="1d", max_retries=3, delay=0.3)
                 if not entry_data.empty:
                     if isinstance(entry_data.columns, pd.MultiIndex):
                         entry_data.columns = entry_data.columns.droplevel(1)
@@ -1688,8 +1759,8 @@ def get_analysis_results():
             for ticker in tickers:
                 try:
                     print(f"  Analyzing {ticker}...")
-                    # Use 2y period to ensure we have enough data for all calculations
-                    data = yf.download(ticker, period="2y", interval="1d", progress=False)
+                    # Use helper function with rate limiting and retries
+                    data = download_stock_data(ticker, period="2y", interval="1d", max_retries=3, delay=0.5)
                     
                     if data.empty:
                         print(f"  No data for {ticker}, skipping.")
