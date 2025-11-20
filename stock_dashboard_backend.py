@@ -1455,23 +1455,48 @@ def perform_historical_backtest(top_stocks_with_scores, config, initial_capital=
                 if best_ticker is not None:
                     pending_rotation = best_ticker
                     pending_rotation_date = date
-                    pending_previous_asset = exit_previous_asset  # Store for when we enter
-                    # CRITICAL: Store entry_price and entry_date so we can restore them during transition
-                    pending_previous_entry_price = entry_price  # Store entry_price from position we're exiting
-                    pending_previous_entry_date = entry_date  # Store entry_date from position we're exiting
-                    # CRITICAL: Keep current_asset as the previous asset throughout the transition
-                    # This makes the transition period (from exit to entry) part of the current stock, not CASH
-                    # We haven't rotated yet - we're still holding the previous stock until we enter the new one
-                    previous_asset = exit_previous_asset
-                    current_asset = exit_previous_asset  # Keep previous asset until entry - we're still in this stock
-                    # CRITICAL: DO NOT clear entry_price or entry_date - we need them for the transition period
-                    # entry_price and entry_date remain from the position we just exited
-                    # The transition period will show as the previous asset, not CASH
-                    # We're still holding this stock until we enter the new one at tomorrow's open
-                    print(f"  [Signal] {best_ticker} detected on {date.strftime('%Y-%m-%d')}, will enter tomorrow at open")
-                    print(f"  [Transition] Still holding {exit_previous_asset} during transition (not CASH)")
-                    print(f"  [Transition] Preserved entry_price=${entry_price}, entry_date={entry_date}")
-                    print(f"  [Transition] current_asset={current_asset}, pending_previous_asset={pending_previous_asset}")
+                    # CRITICAL: If this is the first entry (current_asset is None), we don't have a previous asset
+                    # In this case, we should enter immediately, not set up a transition
+                    if current_asset is None:
+                        # First entry - enter immediately, no transition needed
+                        try:
+                            asset_data = stock_data[best_ticker]
+                            date_idx = asset_data.index.get_indexer([date], method='nearest')[0]
+                            if date_idx >= 0:
+                                entry_price = asset_data['Open'].iloc[date_idx]
+                                entry_date = date
+                                current_asset = best_ticker
+                                print(f"  [Entry] {current_asset} at ${entry_price:.2f} on {date.strftime('%Y-%m-%d')} (open) - first entry")
+                                # Clear pending rotation since we entered immediately
+                                pending_rotation = None
+                                pending_rotation_date = None
+                                pending_previous_asset = None
+                                pending_previous_entry_price = None
+                                pending_previous_entry_date = None
+                        except Exception as e:
+                            print(f"  [!] Error entering {best_ticker} on first entry: {e}")
+                            current_asset = None
+                            entry_price = None
+                            rotation_occurred = False
+                    else:
+                        # Not first entry - set up transition period
+                        pending_previous_asset = exit_previous_asset  # Store for when we enter
+                        # CRITICAL: Store entry_price and entry_date so we can restore them during transition
+                        pending_previous_entry_price = entry_price  # Store entry_price from position we're exiting
+                        pending_previous_entry_date = entry_date  # Store entry_date from position we're exiting
+                        # CRITICAL: Keep current_asset as the previous asset throughout the transition
+                        # This makes the transition period (from exit to entry) part of the current stock, not CASH
+                        # We haven't rotated yet - we're still holding the previous stock until we enter the new one
+                        previous_asset = exit_previous_asset
+                        current_asset = exit_previous_asset  # Keep previous asset until entry - we're still in this stock
+                        # CRITICAL: DO NOT clear entry_price or entry_date - we need them for the transition period
+                        # entry_price and entry_date remain from the position we just exited
+                        # The transition period will show as the previous asset, not CASH
+                        # We're still holding this stock until we enter the new one at tomorrow's open
+                        print(f"  [Signal] {best_ticker} detected on {date.strftime('%Y-%m-%d')}, will enter tomorrow at open")
+                        print(f"  [Transition] Still holding {exit_previous_asset} during transition (not CASH)")
+                        print(f"  [Transition] Preserved entry_price=${entry_price}, entry_date={entry_date}")
+                        print(f"  [Transition] current_asset={current_asset}, pending_previous_asset={pending_previous_asset}")
                 else:
                     # Exiting to cash - no pending entry
                     current_asset = None
@@ -1982,22 +2007,42 @@ def get_analysis_results():
                         
                         # Use concurrent.futures to add timeout to analyze_stock
                         from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+                        import threading
                         
                         with ThreadPoolExecutor(max_workers=1) as executor:
                             future = executor.submit(analyze_stock, ticker, data, CONFIG)
+                            
+                            # Start a progress monitor thread
+                            progress_stop = threading.Event()
+                            
+                            def progress_monitor():
+                                elapsed = 0
+                                while not progress_stop.is_set() and elapsed < timeout_seconds:
+                                    time.sleep(15)  # Check every 15 seconds
+                                    if not progress_stop.is_set():
+                                        elapsed += 15
+                                        if elapsed < timeout_seconds:
+                                            print(f"      ... {ticker} still analyzing ({elapsed}s elapsed)...", flush=True)
+                                            sys.stdout.flush()
+                            
+                            monitor_thread = threading.Thread(target=progress_monitor, daemon=True)
+                            monitor_thread.start()
+                            
                             try:
                                 result = future.result(timeout=timeout_seconds)
+                                progress_stop.set()  # Stop progress monitor
                             except FutureTimeoutError:
-                                print(f"  ⚠ {ticker} analysis timed out after {timeout_seconds}s (attempt {attempt}/{max_retries})", flush=True)
+                                progress_stop.set()  # Stop progress monitor
+                                elapsed_total = time.time() - start_time
+                                print(f"  ⚠ {ticker} analysis timed out after {timeout_seconds}s (attempt {attempt}/{max_retries}, total elapsed: {elapsed_total:.1f}s)", flush=True)
                                 sys.stdout.flush()
-                                # Cancel the future (though it may continue running in background)
                                 future.cancel()
                                 result = None
                                 if attempt < max_retries:
                                     print(f"    Waiting 10s before retry...", flush=True)
                                     sys.stdout.flush()
-                                    import time
                                     time.sleep(10)
+                                    start_time = time.time()  # Reset timer for retry
                                     continue
                                 else:
                                     print(f"  ✗ {ticker}: Failed after {max_retries} attempts (timeout)", flush=True)
@@ -2014,7 +2059,8 @@ def get_analysis_results():
                                 "z_avg": z_avg,
                                 "avg_score": avg_score
                             })
-                            print(f"  ✓ {ticker}: z_avg = {z_avg:.3f}, avg_score = {avg_score:.3f}", flush=True)
+                            elapsed_total = time.time() - start_time
+                            print(f"  ✓ {ticker}: z_avg = {z_avg:.3f}, avg_score = {avg_score:.3f} (completed in {elapsed_total:.1f}s)", flush=True)
                             sys.stdout.flush()
                             break  # Success, exit retry loop
                         else:
