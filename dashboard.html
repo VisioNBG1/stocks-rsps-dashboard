@@ -1252,6 +1252,74 @@
                 let retryCount = 0;
                 const maxRetries = 10; // Allow up to 10 retries
                 const retryDelay = 30000; // 30 seconds between retries
+                let progressPollInterval = null;
+                let resultsPollInterval = null;
+                
+                // Progress polling function
+                const pollProgress = () => {
+                    const progressUrl = API_URL.replace('/analyze', '/progress');
+                    fetch(progressUrl, {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' }
+                    })
+                    .then(response => response.json())
+                    .then(progress => {
+                        if (progress.status === 'complete' && progress.results) {
+                            // Analysis completed! Stop polling and process results
+                            if (progressPollInterval) clearInterval(progressPollInterval);
+                            if (resultsPollInterval) clearInterval(resultsPollInterval);
+                            console.log('Analysis completed! Loading results...');
+                            processData(progress.results);
+                        } else if (progress.status === 'error') {
+                            // Analysis failed
+                            if (progressPollInterval) clearInterval(progressPollInterval);
+                            if (resultsPollInterval) clearInterval(resultsPollInterval);
+                            errorEl.textContent = `Analysis error: ${progress.error || 'Unknown error'}`;
+                            errorEl.style.display = 'block';
+                            loadingEl.style.display = 'none';
+                        } else if (progress.status !== 'idle') {
+                            // Analysis is still running - update UI with progress
+                            const elapsed = progress.last_update ? Math.round((Date.now() / 1000 - progress.last_update)) : 0;
+                            const progressMsg = progress.message || progress.stage || 'Processing...';
+                            const progressText = `${progressMsg} (${progress.current || 0}/${progress.total || 0})`;
+                            loadingEl.textContent = `⏳ ${progressText}${elapsed > 0 ? ` - ${elapsed}s elapsed` : ''}`;
+                            if (progress.stage) {
+                                errorEl.textContent = `Analysis in progress: ${progress.stage}. Connection lost but analysis continues in background.`;
+                                errorEl.style.display = 'block';
+                            }
+                        }
+                    })
+                    .catch(err => {
+                        // Progress endpoint might not be available, that's okay
+                        console.log('Progress check failed (this is normal):', err.message);
+                    });
+                };
+                
+                // Results polling function (check if analysis completed)
+                const pollResults = () => {
+                    const resultsUrl = API_URL.replace('/analyze', '/results');
+                    fetch(resultsUrl, {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' }
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            return response.json();
+                        }
+                        throw new Error('Results not ready');
+                    })
+                    .then(data => {
+                        // Results are ready! Stop polling and process
+                        if (progressPollInterval) clearInterval(progressPollInterval);
+                        if (resultsPollInterval) clearInterval(resultsPollInterval);
+                        console.log('Results available! Loading...');
+                        processData(data);
+                    })
+                    .catch(err => {
+                        // Results not ready yet, that's okay
+                        console.log('Results not ready yet (this is normal)');
+                    });
+                };
                 
                 const attemptFetch = () => {
                     return fetch(url, {
@@ -1268,10 +1336,20 @@
                             if ((response.status === 502 || response.status === 503) && retryCount < maxRetries) {
                                 retryCount++;
                                 const waitTime = retryDelay * retryCount; // Exponential backoff
-                                console.log(`Connection lost (${response.status}), retrying in ${waitTime/1000}s (attempt ${retryCount}/${maxRetries})...`);
-                                errorEl.textContent = `Connection lost, but analysis continues. Retrying in ${Math.round(waitTime/1000)}s... (attempt ${retryCount}/${maxRetries})`;
+                                console.log(`Connection lost (${response.status}), starting progress polling...`);
+                                errorEl.textContent = `Connection lost, but analysis continues. Checking progress...`;
                                 errorEl.style.display = 'block';
-                                loadingEl.textContent = `⏳ Loading market data... (retrying, analysis continues in background)`;
+                                loadingEl.textContent = `⏳ Loading market data... (checking progress)`;
+                                
+                                // Start polling progress and results
+                                if (!progressPollInterval) {
+                                    progressPollInterval = setInterval(pollProgress, 10000); // Poll every 10 seconds
+                                }
+                                if (!resultsPollInterval) {
+                                    resultsPollInterval = setInterval(pollResults, 15000); // Poll results every 15 seconds
+                                }
+                                
+                                // Also retry the main request
                                 return new Promise((resolve) => {
                                     setTimeout(() => {
                                         attemptFetch().then(resolve).catch(resolve);
@@ -1308,6 +1386,15 @@
                         }
                         
                         // Success - process the data
+                        // Stop any polling intervals
+                        if (progressPollInterval) {
+                            clearInterval(progressPollInterval);
+                            progressPollInterval = null;
+                        }
+                        if (resultsPollInterval) {
+                            clearInterval(resultsPollInterval);
+                            resultsPollInterval = null;
+                        }
                         processData(data);
                         return data;
                     })
@@ -1319,10 +1406,20 @@
                         if ((error.message.includes('502') || error.message.includes('503') || error.message.includes('Failed to fetch')) && retryCount < maxRetries) {
                             retryCount++;
                             const waitTime = retryDelay * retryCount;
-                            console.log(`Error: ${error.message}, retrying in ${waitTime/1000}s (attempt ${retryCount}/${maxRetries})...`);
-                            errorEl.textContent = `Connection error, retrying in ${Math.round(waitTime/1000)}s... (attempt ${retryCount}/${maxRetries}). Analysis continues in background.`;
+                            console.log(`Error: ${error.message}, starting progress polling...`);
+                            errorEl.textContent = `Connection error, but analysis continues. Checking progress...`;
                             errorEl.style.display = 'block';
-                            loadingEl.textContent = `⏳ Loading market data... (retrying, analysis continues in background)`;
+                            loadingEl.textContent = `⏳ Loading market data... (checking progress)`;
+                            
+                            // Start polling progress and results
+                            if (!progressPollInterval) {
+                                progressPollInterval = setInterval(pollProgress, 10000); // Poll every 10 seconds
+                            }
+                            if (!resultsPollInterval) {
+                                resultsPollInterval = setInterval(pollResults, 15000); // Poll results every 15 seconds
+                            }
+                            
+                            // Also retry the main request
                             return new Promise((resolve, reject) => {
                                 setTimeout(() => {
                                     attemptFetch().then(resolve).catch(reject);
@@ -1456,23 +1553,46 @@
                 attemptFetch().catch(error => {
                     clearTimeout(timeoutId); // Clear timeout on error
                     console.error('Final error after all retries:', error);
-                    const isDeployed = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-                    let errorMsg = `Error loading data: ${error.message}`;
-                    if (error.name === 'AbortError') {
-                        errorMsg = `Request timed out after 2 hours. The analysis is taking longer than expected. Please try refreshing the page or check Render logs.`;
-                    } else if (isDeployed) {
-                        if (retryCount >= maxRetries) {
-                            errorMsg = `Failed after ${maxRetries} retry attempts. The analysis may still be running in the background. Please wait a few minutes and refresh the page, or check Render logs for progress.`;
+                    
+                    // If we have polling intervals running, keep them going
+                    if (!progressPollInterval && !resultsPollInterval) {
+                        // Only show error if we're not polling
+                        const isDeployed = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+                        let errorMsg = `Error loading data: ${error.message}`;
+                        if (error.name === 'AbortError') {
+                            errorMsg = `Request timed out after 2 hours. The analysis is taking longer than expected. Progress polling will continue in the background.`;
+                            // Start polling if not already started
+                            if (!progressPollInterval) {
+                                progressPollInterval = setInterval(pollProgress, 10000);
+                            }
+                            if (!resultsPollInterval) {
+                                resultsPollInterval = setInterval(pollResults, 15000);
+                            }
+                        } else if (isDeployed) {
+                            if (retryCount >= maxRetries) {
+                                errorMsg = `Failed after ${maxRetries} retry attempts. The analysis may still be running in the background. Progress polling will continue.`;
+                                // Start polling if not already started
+                                if (!progressPollInterval) {
+                                    progressPollInterval = setInterval(pollProgress, 10000);
+                                }
+                                if (!resultsPollInterval) {
+                                    resultsPollInterval = setInterval(pollResults, 15000);
+                                }
+                            } else {
+                                errorMsg += `. The backend service may be starting up (first request can take 3-5 minutes on free tier) or there may be an issue with the Render deployment. Check the Render logs for details.`;
+                            }
                         } else {
-                            errorMsg += `. The backend service may be starting up (first request can take 3-5 minutes on free tier) or there may be an issue with the Render deployment. Check the Render logs for details.`;
+                            errorMsg += `. Make sure the Flask server is running. Use START_DASHBOARD.bat to start it.`;
                         }
-                    } else {
-                        errorMsg += `. Make sure the Flask server is running. Use START_DASHBOARD.bat to start it.`;
+                        errorEl.textContent = errorMsg;
+                        errorEl.style.display = 'block';
                     }
-                    errorEl.textContent = errorMsg;
-                    errorEl.style.display = 'block';
-                    loadingEl.style.display = 'none';
-                    containerEl.style.display = 'none';
+                    
+                    // Don't hide loading if we're polling
+                    if (!progressPollInterval && !resultsPollInterval) {
+                        loadingEl.style.display = 'none';
+                        containerEl.style.display = 'none';
+                    }
                     if (refreshBtn) refreshBtn.disabled = false;
                 });
             } catch (error) {
