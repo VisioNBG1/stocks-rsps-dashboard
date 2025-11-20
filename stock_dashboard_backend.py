@@ -2491,6 +2491,38 @@ def get_analysis_results():
         }), 500
 
 
+# --- Keep-Alive Thread (prevents Render from spinning down) ---
+def start_keepalive():
+    """Periodically hit health endpoint to keep Render service alive"""
+    def keepalive_loop():
+        from urllib.request import urlopen
+        from urllib.error import URLError
+        import time
+        
+        while True:
+            try:
+                # Wait 5 minutes between keep-alive requests
+                time.sleep(300)  # 5 minutes
+                
+                # Make a request to health endpoint to keep service alive
+                try:
+                    port = os.environ.get('PORT', '10000')
+                    url = f'http://localhost:{port}/health'
+                    with urlopen(url, timeout=5) as response:
+                        status = response.getcode()
+                        print(f"✓ Keep-alive ping sent (status: {status})", flush=True)
+                except (URLError, OSError) as e:
+                    # Ignore keep-alive errors - they're non-critical
+                    print(f"⚠ Keep-alive ping failed (non-critical): {e}", flush=True)
+            except Exception as e:
+                print(f"⚠ Keep-alive error (non-critical): {e}", flush=True)
+                time.sleep(60)  # Wait 1 minute before retrying
+    
+    # Start keep-alive thread
+    keepalive_thread = threading.Thread(target=keepalive_loop, daemon=True)
+    keepalive_thread.start()
+    print("✓ Keep-alive thread started (will ping every 5 minutes to prevent spin-down)", flush=True)
+
 # --- Background Analysis Thread ---
 def start_background_analysis():
     """Start analysis automatically in background thread after a short delay"""
@@ -2531,10 +2563,11 @@ def start_background_analysis():
     thread.start()
     print("✓ Background analysis thread started (will check cache and run if needed)", flush=True)
 
-# Start background analysis when module loads (for gunicorn)
+# Start keep-alive and background analysis when module loads (for gunicorn)
 # Only start if not already running (to avoid duplicate threads)
 if not hasattr(app, '_background_analysis_started'):
     app._background_analysis_started = True
+    start_keepalive()  # Start keep-alive first
     start_background_analysis()
 
 # --- Run Flask Server ---
