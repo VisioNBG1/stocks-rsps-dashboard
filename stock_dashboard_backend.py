@@ -2584,3 +2584,6 @@ if __name__ == '__main__':
     print("="*60 + "\n")
     app.run(host='0.0.0.0', port=port, debug=False)
 
+# For Fly.io and other platforms that use gunicorn
+# The app variable is already defined above and will be used by gunicorn
+
