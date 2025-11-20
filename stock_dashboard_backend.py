@@ -33,6 +33,19 @@ CORS(app)
 # Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
 
+# Global progress tracking
+analysis_progress = {
+    "status": "idle",  # "idle", "downloading", "analyzing", "ratio_analysis", "backtesting", "complete", "error"
+    "stage": "",
+    "current": 0,
+    "total": 0,
+    "message": "",
+    "start_time": None,
+    "last_update": None,
+    "results": None,
+    "error": None
+}
+
 # --- CONFIGURATION (Based on your PineScript inputs) ---
 CONFIG = {
     "z_score_len": 50,
@@ -1005,6 +1018,24 @@ def status_check():
         }
     }), 200
 
+@app.route('/progress', methods=['GET'])
+def get_progress():
+    """Get current analysis progress"""
+    global analysis_progress
+    return jsonify(analysis_progress), 200
+
+@app.route('/results', methods=['GET'])
+def get_results():
+    """Get cached analysis results if available"""
+    global analysis_progress
+    if analysis_progress["status"] == "complete" and analysis_progress["results"]:
+        return jsonify(analysis_progress["results"]), 200
+    else:
+        return jsonify({
+            "error": "Results not available",
+            "status": analysis_progress["status"]
+        }), 404
+
 # --- Ratio Analysis and Backtesting Functions ---
 
 def calculate_ratio_avg_score(ticker1, ticker2, config, data_cache=None):
@@ -1853,6 +1884,20 @@ def get_analysis_results():
         print(f"{'='*60}", flush=True)
         sys.stdout.flush()
         
+        # Initialize progress tracking
+        global analysis_progress
+        analysis_progress = {
+            "status": "downloading",
+            "stage": "Initializing",
+            "current": 0,
+            "total": 0,
+            "message": "Starting analysis...",
+            "start_time": time.time(),
+            "last_update": time.time(),
+            "results": None,
+            "error": None
+        }
+        
         # Check if we should use cache or force refresh
         force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
         
@@ -1862,6 +1907,9 @@ def get_analysis_results():
             if cached_data:
                 elapsed = time.time() - start_time
                 print(f"✓ Loading data from cache... (took {elapsed:.2f}s)")
+                analysis_progress["status"] = "complete"
+                analysis_progress["results"] = cached_data
+                analysis_progress["message"] = "Loaded from cache"
                 return jsonify(cached_data)
         
         if force_refresh:
@@ -1878,6 +1926,12 @@ def get_analysis_results():
                 ticker_to_sector[ticker] = sector
         
         print(f"  Downloading data for {len(all_tickers)} stocks individually (to avoid rate limits)...")
+        analysis_progress["status"] = "downloading"
+        analysis_progress["stage"] = "Downloading stock data"
+        analysis_progress["total"] = len(all_tickers)
+        analysis_progress["current"] = 0
+        analysis_progress["message"] = f"Downloading {len(all_tickers)} stocks..."
+        analysis_progress["last_update"] = time.time()
         
         # Add initial delay to avoid immediate rate limits from Render's IP
         # Reduced to 60s to avoid timeout issues (with 15s between downloads, total time is manageable)
@@ -1895,6 +1949,9 @@ def get_analysis_results():
         
         for idx, ticker in enumerate(all_tickers, 1):
             print(f"  Starting download {idx}/{len(all_tickers)}: {ticker}", flush=True)
+            analysis_progress["current"] = idx
+            analysis_progress["message"] = f"Downloading {ticker} ({idx}/{len(all_tickers)})..."
+            analysis_progress["last_update"] = time.time()
             sys.stdout.flush()
             max_retries = 3
             download_success = False
@@ -2098,9 +2155,16 @@ def get_analysis_results():
         print(f"\n✓ Finished processing {len(results)} stocks", flush=True)
         sys.stdout.flush()
         
+        analysis_progress["status"] = "analyzing"
+        analysis_progress["stage"] = "Stock analysis complete"
+        analysis_progress["message"] = f"Analyzed {len(results)} stocks, starting ratio analysis..."
+        analysis_progress["last_update"] = time.time()
+        
         if not results:
             print("\n⚠ No results calculated - returning error", flush=True)
             sys.stdout.flush()
+            analysis_progress["status"] = "error"
+            analysis_progress["error"] = "No results calculated"
             return jsonify({"error": "No results calculated. Check server logs for details."}), 500
             
         # --- Format data ---
@@ -2143,6 +2207,10 @@ def get_analysis_results():
         # --- Ratio Analysis and Backtesting ---
         print("\n--- Starting Ratio Analysis and Backtesting ---", flush=True)
         sys.stdout.flush()
+        analysis_progress["status"] = "ratio_analysis"
+        analysis_progress["stage"] = "Ratio Analysis"
+        analysis_progress["message"] = "Calculating ratio analysis..."
+        analysis_progress["last_update"] = time.time()
         ratio_analysis = None
         backtest_results = None
         
@@ -2165,6 +2233,10 @@ def get_analysis_results():
             for i, ticker1 in enumerate(all_tickers):
                 if i % 10 == 0 or i == 0:
                     print(f"  Progress: {i}/{len(all_tickers)} stocks analyzed...", flush=True)
+                    analysis_progress["current"] = i
+                    analysis_progress["total"] = len(all_tickers)
+                    analysis_progress["message"] = f"Ratio analysis: {i}/{len(all_tickers)} stocks..."
+                    analysis_progress["last_update"] = time.time()
                     sys.stdout.flush()
                 
                 ratio_z_scores = []
@@ -2290,6 +2362,11 @@ def get_analysis_results():
             
             print(f"  Top stocks by ratio analysis: {[s[0] for s in top_ratio_stocks[:5]]}")
             
+            analysis_progress["status"] = "backtesting"
+            analysis_progress["stage"] = "Backtesting"
+            analysis_progress["message"] = "Running historical backtest..."
+            analysis_progress["last_update"] = time.time()
+            
             # Perform historical backtest using ratio scores
             backtest_results = perform_historical_backtest(top_ratio_stocks, CONFIG)
             
@@ -2303,6 +2380,9 @@ def get_analysis_results():
             import traceback
             traceback.print_exc(file=sys.stderr)
             sys.stderr.flush()
+            analysis_progress["status"] = "error"
+            analysis_progress["error"] = str(e)
+            analysis_progress["last_update"] = time.time()
 
         print(f"\n✓ Analysis complete. Processed {len(results)} stocks across {len(output_sectors)} sectors.", flush=True)
         print("Sending JSON response to frontend.", flush=True)
@@ -2321,6 +2401,20 @@ def get_analysis_results():
         # Save to cache
         save_cache(response_data)
         
+        # Update progress as complete
+        analysis_progress["status"] = "complete"
+        analysis_progress["stage"] = "Complete"
+        analysis_progress["message"] = "Analysis complete!"
+        analysis_progress["results"] = response_data
+        analysis_progress["last_update"] = time.time()
+        
+        # Update progress as complete
+        analysis_progress["status"] = "complete"
+        analysis_progress["stage"] = "Complete"
+        analysis_progress["message"] = "Analysis complete!"
+        analysis_progress["results"] = response_data
+        analysis_progress["last_update"] = time.time()
+        
         elapsed = time.time() - start_time
         print(f"\n{'='*60}")
         print(f"✓ Analysis complete! Total time: {elapsed:.2f}s ({elapsed/60:.2f} minutes)")
@@ -2334,6 +2428,12 @@ def get_analysis_results():
         error_type = type(e).__name__
         error_msg = str(e)
         tb_str = traceback.format_exc()
+        
+        # Update progress with error
+        global analysis_progress
+        analysis_progress["status"] = "error"
+        analysis_progress["error"] = error_msg
+        analysis_progress["last_update"] = time.time()
         
         # Print to stdout (visible in Render logs) - force flush
         print(f"\n{'='*60}", flush=True)
