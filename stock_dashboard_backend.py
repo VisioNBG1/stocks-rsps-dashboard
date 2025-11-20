@@ -2164,6 +2164,16 @@ def run_analysis_logic(force_refresh=False):
         print(f"\n✓ Finished processing {len(results)} stocks", flush=True)
         sys.stdout.flush()
         
+        # Save partial results after stock analysis (checkpoint)
+        partial_response = {
+            "sectors": output_sectors,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "_partial": True,  # Mark as partial
+            "_stage": "stock_analysis_complete"
+        }
+        save_cache(partial_response)
+        print(f"  ✓ Checkpoint saved: Stock analysis complete ({len(results)} stocks)", flush=True)
+        
         analysis_progress["status"] = "analyzing"
         analysis_progress["stage"] = "Stock analysis complete"
         analysis_progress["message"] = f"Analyzed {len(results)} stocks, starting ratio analysis..."
@@ -2384,6 +2394,17 @@ def run_analysis_logic(force_refresh=False):
                 "current_best": top_ratio_stocks[0][0] if top_ratio_stocks else "N/A"
             }
             
+            # Save partial results after ratio analysis (checkpoint)
+            partial_response = {
+                "sectors": output_sectors,
+                "ratio_analysis": ratio_analysis,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "_partial": True,  # Mark as partial
+                "_stage": "ratio_analysis_complete"
+            }
+            save_cache(partial_response)
+            print(f"  ✓ Checkpoint saved: Ratio analysis complete", flush=True)
+            
         except Exception as e:
             print(f"  [!] Error in ratio analysis/backtesting: {e}", flush=True)
             import traceback
@@ -2406,6 +2427,12 @@ def run_analysis_logic(force_refresh=False):
             response_data["ratio_analysis"] = ratio_analysis
         if backtest_results:
             response_data["backtest"] = backtest_results
+        
+        # Remove partial markers before final save
+        if "_partial" in response_data:
+            del response_data["_partial"]
+        if "_stage" in response_data:
+            del response_data["_stage"]
         
         # Save to cache
         save_cache(response_data)
