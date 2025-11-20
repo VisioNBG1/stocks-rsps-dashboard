@@ -1254,7 +1254,7 @@
                 const retryDelay = 30000; // 30 seconds between retries
                 
                 const attemptFetch = () => {
-                    fetch(url, {
+                    return fetch(url, {
                         method: 'GET',
                         headers: {
                             'Accept': 'application/json',
