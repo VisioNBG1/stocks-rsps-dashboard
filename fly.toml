@@ -15,10 +15,13 @@ primary_region = "iad"
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = false
+  auto_stop_machines = "suspend"
   auto_start_machines = true
   min_machines_running = 1
   processes = ["app"]
+
+[processes]
+  app = "gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 7200 --graceful-timeout 7200 --keep-alive 5 stock_dashboard_backend:app"
 
 [[vm]]
   cpu_kind = "shared"
