@@ -1951,49 +1951,101 @@ def get_analysis_results():
             print(f"\n--- Processing Sector: {sector} ---", flush=True)
             sys.stdout.flush()
             for ticker in tickers:
-                try:
-                    print(f"  Analyzing {ticker}...", flush=True)
-                    sys.stdout.flush()
-                    
-                    # Get data from batch or download individually
-                    if ticker in batch_data and not batch_data[ticker].empty:
-                        data = batch_data[ticker]
-                    else:
-                        # Fallback: download individually with long delays
-                        print(f"    Data not in batch, downloading individually with 10s delay...")
-                        data = download_stock_data(ticker, period="2y", interval="1d", max_retries=3, delay=10.0)
-                    
-                    if data.empty:
-                        print(f"  No data for {ticker}, skipping.")
-                        continue
-                    
-                    # Handle MultiIndex columns from yfinance
-                    if isinstance(data.columns, pd.MultiIndex):
-                        data.columns = data.columns.droplevel(1)
-                    
-                    result = analyze_stock(ticker, data, CONFIG)
-                    
-                    if result is not None and isinstance(result, dict):
-                        z_avg = result.get("z_avg", 0.0)
-                        avg_score = result.get("avg_score", 0.0)
-                        results.append({
-                            "sector": sector, 
-                            "ticker": ticker, 
-                            "z_avg": z_avg,
-                            "avg_score": avg_score
-                        })
-                        print(f"  ✓ {ticker}: z_avg = {z_avg:.3f}, avg_score = {avg_score:.3f}", flush=True)
-                        sys.stdout.flush()
-                    else:
-                        print(f"  ✗ {ticker}: Failed to calculate scores", flush=True)
+                max_retries = 3
+                timeout_seconds = 300  # 5 minutes per stock analysis
+                result = None
+                
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        if attempt > 1:
+                            print(f"  Retrying {ticker} (attempt {attempt}/{max_retries})...", flush=True)
+                            sys.stdout.flush()
+                        else:
+                            print(f"  Analyzing {ticker}...", flush=True)
+                            sys.stdout.flush()
+                        
+                        # Get data from batch or download individually
+                        if ticker in batch_data and not batch_data[ticker].empty:
+                            data = batch_data[ticker]
+                        else:
+                            # Fallback: download individually with long delays
+                            print(f"    Data not in batch, downloading individually with 10s delay...")
+                            data = download_stock_data(ticker, period="2y", interval="1d", max_retries=3, delay=10.0)
+                        
+                        if data.empty:
+                            print(f"  No data for {ticker}, skipping.")
+                            break  # No point retrying if no data
+                        
+                        # Handle MultiIndex columns from yfinance
+                        if isinstance(data.columns, pd.MultiIndex):
+                            data.columns = data.columns.droplevel(1)
+                        
+                        # Use concurrent.futures to add timeout to analyze_stock
+                        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+                        
+                        with ThreadPoolExecutor(max_workers=1) as executor:
+                            future = executor.submit(analyze_stock, ticker, data, CONFIG)
+                            try:
+                                result = future.result(timeout=timeout_seconds)
+                            except FutureTimeoutError:
+                                print(f"  ⚠ {ticker} analysis timed out after {timeout_seconds}s (attempt {attempt}/{max_retries})", flush=True)
+                                sys.stdout.flush()
+                                # Cancel the future (though it may continue running in background)
+                                future.cancel()
+                                result = None
+                                if attempt < max_retries:
+                                    print(f"    Waiting 10s before retry...", flush=True)
+                                    sys.stdout.flush()
+                                    import time
+                                    time.sleep(10)
+                                    continue
+                                else:
+                                    print(f"  ✗ {ticker}: Failed after {max_retries} attempts (timeout)", flush=True)
+                                    sys.stdout.flush()
+                                    break
+                        
+                        # If we got a result, break out of retry loop
+                        if result is not None and isinstance(result, dict):
+                            z_avg = result.get("z_avg", 0.0)
+                            avg_score = result.get("avg_score", 0.0)
+                            results.append({
+                                "sector": sector, 
+                                "ticker": ticker, 
+                                "z_avg": z_avg,
+                                "avg_score": avg_score
+                            })
+                            print(f"  ✓ {ticker}: z_avg = {z_avg:.3f}, avg_score = {avg_score:.3f}", flush=True)
+                            sys.stdout.flush()
+                            break  # Success, exit retry loop
+                        else:
+                            if attempt < max_retries:
+                                print(f"  ⚠ {ticker} returned None (attempt {attempt}/{max_retries}), retrying...", flush=True)
+                                sys.stdout.flush()
+                                import time
+                                time.sleep(5)
+                                continue
+                            else:
+                                print(f"  ✗ {ticker}: Failed to calculate scores after {max_retries} attempts", flush=True)
+                                sys.stdout.flush()
+                                break
+                            
+                    except Exception as e:
+                        error_msg = str(e)
+                        print(f"  ⚠ Error processing {ticker} (attempt {attempt}/{max_retries}): {error_msg}", flush=True)
                         sys.stdout.flush()
                         
-                except Exception as e:
-                    print(f"  ✗ Error processing {ticker}: {str(e)}", flush=True)
-                    import traceback
-                    traceback.print_exc(file=sys.stderr)
-                    sys.stderr.flush()
-                    continue
+                        if attempt < max_retries:
+                            print(f"    Waiting 10s before retry...", flush=True)
+                            sys.stdout.flush()
+                            import time
+                            time.sleep(10)
+                            continue
+                        else:
+                            print(f"  ✗ {ticker}: Failed after {max_retries} attempts: {error_msg}", flush=True)
+                            import traceback
+                            traceback.print_exc(file=sys.stderr)
+                            sys.stderr.flush()
+                            break  # Move to next stock
 
         print(f"\n✓ Finished processing {len(results)} stocks", flush=True)
         sys.stdout.flush()
