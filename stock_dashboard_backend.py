@@ -2150,24 +2150,29 @@ def get_analysis_results():
                             
                             with ThreadPoolExecutor(max_workers=1) as executor:
                                 future = executor.submit(calculate_ratio_avg_score, ticker1, ticker2, CONFIG, batch_data)
-                                try:
-                                    # Add progress logging every 15 seconds
+                                
+                                # Start a progress monitor thread
+                                import threading
+                                progress_stop = threading.Event()
+                                
+                                def progress_monitor():
                                     elapsed = 0
-                                    while elapsed < timeout_seconds:
-                                        try:
-                                            ratio_score = future.result(timeout=15)  # Check every 15 seconds
-                                            break  # Got result, exit loop
-                                        except FutureTimeoutError:
+                                    while not progress_stop.is_set() and elapsed < timeout_seconds:
+                                        time.sleep(15)  # Check every 15 seconds
+                                        if not progress_stop.is_set():
                                             elapsed += 15
                                             if elapsed < timeout_seconds:
                                                 print(f"      ... {ticker1}/{ticker2} still calculating ({elapsed}s elapsed)...", flush=True)
                                                 sys.stdout.flush()
-                                                # Re-submit to continue checking
-                                                future = executor.submit(calculate_ratio_avg_score, ticker1, ticker2, CONFIG, batch_data)
-                                            else:
-                                                raise FutureTimeoutError(f"Timed out after {timeout_seconds}s")
-                                    
+                                
+                                monitor_thread = threading.Thread(target=progress_monitor, daemon=True)
+                                monitor_thread.start()
+                                
+                                try:
+                                    ratio_score = future.result(timeout=timeout_seconds)
+                                    progress_stop.set()  # Stop progress monitor
                                 except FutureTimeoutError:
+                                    progress_stop.set()  # Stop progress monitor
                                     elapsed_total = time.time() - start_time
                                     print(f"      ⚠ {ticker1}/{ticker2} timed out after {timeout_seconds}s (attempt {attempt}/{max_retries}, total elapsed: {elapsed_total:.1f}s)", flush=True)
                                     sys.stdout.flush()
