@@ -1241,12 +1241,12 @@
                 console.log('API_URL:', API_URL);
                 console.log('Current origin:', window.location.origin);
                 
-                // Create abort controller for timeout (15 minutes)
+                // Create abort controller for timeout (2 hours - matches backend timeout)
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => {
-                    console.error('Request timeout after 15 minutes');
+                    console.error('Request timeout after 2 hours');
                     controller.abort();
-                }, 900000); // 15 minutes
+                }, 7200000); // 2 hours (7200 seconds)
                 
                 fetch(url, {
                     method: 'GET',
