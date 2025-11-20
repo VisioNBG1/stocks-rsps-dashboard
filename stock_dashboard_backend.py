@@ -2130,10 +2130,11 @@ def get_analysis_results():
                     if comparisons_made >= comparison_limit:
                         break
                     
-                    # Calculate ratio avg_score (ticker1/ticker2) with retry logic
+                    # Calculate ratio avg_score (ticker1/ticker2) with retry logic and aggressive timeout
                     max_retries = 3
-                    timeout_seconds = 120  # 2 minutes per ratio comparison
+                    timeout_seconds = 60  # 60 seconds per ratio comparison (normal takes 15-30s)
                     ratio_score = None
+                    start_time = time.time()
                     
                     for attempt in range(1, max_retries + 1):
                         try:
@@ -2150,54 +2151,72 @@ def get_analysis_results():
                             with ThreadPoolExecutor(max_workers=1) as executor:
                                 future = executor.submit(calculate_ratio_avg_score, ticker1, ticker2, CONFIG, batch_data)
                                 try:
-                                    ratio_score = future.result(timeout=timeout_seconds)
+                                    # Add progress logging every 15 seconds
+                                    elapsed = 0
+                                    while elapsed < timeout_seconds:
+                                        try:
+                                            ratio_score = future.result(timeout=15)  # Check every 15 seconds
+                                            break  # Got result, exit loop
+                                        except FutureTimeoutError:
+                                            elapsed += 15
+                                            if elapsed < timeout_seconds:
+                                                print(f"      ... {ticker1}/{ticker2} still calculating ({elapsed}s elapsed)...", flush=True)
+                                                sys.stdout.flush()
+                                                # Re-submit to continue checking
+                                                future = executor.submit(calculate_ratio_avg_score, ticker1, ticker2, CONFIG, batch_data)
+                                            else:
+                                                raise FutureTimeoutError(f"Timed out after {timeout_seconds}s")
+                                    
                                 except FutureTimeoutError:
-                                    print(f"      ⚠ {ticker1}/{ticker2} timed out after {timeout_seconds}s (attempt {attempt}/{max_retries})", flush=True)
+                                    elapsed_total = time.time() - start_time
+                                    print(f"      ⚠ {ticker1}/{ticker2} timed out after {timeout_seconds}s (attempt {attempt}/{max_retries}, total elapsed: {elapsed_total:.1f}s)", flush=True)
                                     sys.stdout.flush()
                                     future.cancel()
                                     ratio_score = None
                                     if attempt < max_retries:
                                         print(f"        Waiting 5s before retry...", flush=True)
                                         sys.stdout.flush()
-                                        import time
                                         time.sleep(5)
+                                        start_time = time.time()  # Reset timer for retry
                                         continue
                                     else:
-                                        print(f"      ✗ {ticker1}/{ticker2}: Failed after {max_retries} attempts (timeout)", flush=True)
+                                        print(f"      ✗ {ticker1}/{ticker2}: Failed after {max_retries} attempts (timeout), skipping...", flush=True)
                                         sys.stdout.flush()
                                         break
                             
                             # If we got a result, break out of retry loop
                             if ratio_score is not None:
+                                elapsed_total = time.time() - start_time
                                 ratio_z_scores.append(ratio_score)
-                                print(f"      ✓ {ticker1}/{ticker2}: {ratio_score:.3f}", flush=True)
+                                print(f"      ✓ {ticker1}/{ticker2}: {ratio_score:.3f} (completed in {elapsed_total:.1f}s)", flush=True)
                                 sys.stdout.flush()
                                 break  # Success, exit retry loop
                             else:
                                 if attempt < max_retries:
                                     print(f"      ⚠ {ticker1}/{ticker2} returned None (attempt {attempt}/{max_retries}), retrying...", flush=True)
                                     sys.stdout.flush()
-                                    import time
                                     time.sleep(3)
+                                    start_time = time.time()  # Reset timer for retry
                                     continue
                                 else:
-                                    print(f"      ✗ {ticker1}/{ticker2}: Failed to calculate ratio after {max_retries} attempts", flush=True)
+                                    print(f"      ✗ {ticker1}/{ticker2}: Failed to calculate ratio after {max_retries} attempts, skipping...", flush=True)
                                     sys.stdout.flush()
                                     break
                                 
                         except Exception as e:
                             error_msg = str(e)
-                            print(f"      ⚠ Error calculating ratio for {ticker1}/{ticker2} (attempt {attempt}/{max_retries}): {error_msg}", flush=True)
+                            elapsed_total = time.time() - start_time
+                            print(f"      ⚠ Error calculating ratio for {ticker1}/{ticker2} (attempt {attempt}/{max_retries}, elapsed: {elapsed_total:.1f}s): {error_msg}", flush=True)
                             sys.stdout.flush()
                             
                             if attempt < max_retries:
                                 print(f"        Waiting 5s before retry...", flush=True)
                                 sys.stdout.flush()
-                                import time
                                 time.sleep(5)
+                                start_time = time.time()  # Reset timer for retry
                                 continue
                             else:
-                                print(f"      ✗ {ticker1}/{ticker2}: Failed after {max_retries} attempts: {error_msg}", flush=True)
+                                print(f"      ✗ {ticker1}/{ticker2}: Failed after {max_retries} attempts, skipping...", flush=True)
                                 sys.stdout.flush()
                                 break  # Move to next comparison
                     
