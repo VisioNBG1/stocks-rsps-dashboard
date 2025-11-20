@@ -2016,14 +2016,16 @@ def get_analysis_results():
                             progress_stop = threading.Event()
                             
                             def progress_monitor():
-                                elapsed = 0
-                                while not progress_stop.is_set() and elapsed < timeout_seconds:
+                                start_time_monitor = time.time()
+                                while not progress_stop.is_set():
                                     time.sleep(15)  # Check every 15 seconds
                                     if not progress_stop.is_set():
-                                        elapsed += 15
+                                        elapsed = int(time.time() - start_time_monitor)
                                         if elapsed < timeout_seconds:
                                             print(f"      ... {ticker} still analyzing ({elapsed}s elapsed)...", flush=True)
                                             sys.stdout.flush()
+                                        else:
+                                            break
                             
                             monitor_thread = threading.Thread(target=progress_monitor, daemon=True)
                             monitor_thread.start()
@@ -2202,14 +2204,16 @@ def get_analysis_results():
                                 progress_stop = threading.Event()
                                 
                                 def progress_monitor():
-                                    elapsed = 0
-                                    while not progress_stop.is_set() and elapsed < timeout_seconds:
+                                    start_time_monitor = time.time()
+                                    while not progress_stop.is_set():
                                         time.sleep(15)  # Check every 15 seconds
                                         if not progress_stop.is_set():
-                                            elapsed += 15
+                                            elapsed = int(time.time() - start_time_monitor)
                                             if elapsed < timeout_seconds:
                                                 print(f"      ... {ticker1}/{ticker2} still calculating ({elapsed}s elapsed)...", flush=True)
                                                 sys.stdout.flush()
+                                            else:
+                                                break
                                 
                                 monitor_thread = threading.Thread(target=progress_monitor, daemon=True)
                                 monitor_thread.start()

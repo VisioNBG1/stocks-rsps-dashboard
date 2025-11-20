@@ -1248,25 +1248,92 @@
                     controller.abort();
                 }, 7200000); // 2 hours (7200 seconds)
                 
-                fetch(url, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                    },
-                    signal: controller.signal
-                })
-                .then(response => {
-                    console.log('Response status:', response.status, response.statusText);
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    if (data.error) {
-                        throw new Error(data.error);
-                    }
-
+                // Retry logic for 502/503 errors (connection timeout at load balancer)
+                let retryCount = 0;
+                const maxRetries = 10; // Allow up to 10 retries
+                const retryDelay = 30000; // 30 seconds between retries
+                
+                const attemptFetch = () => {
+                    fetch(url, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                        },
+                        signal: controller.signal
+                    })
+                    .then(response => {
+                        console.log('Response status:', response.status, response.statusText);
+                        if (!response.ok) {
+                            // Retry on 502/503 errors (connection timeout at load balancer)
+                            if ((response.status === 502 || response.status === 503) && retryCount < maxRetries) {
+                                retryCount++;
+                                const waitTime = retryDelay * retryCount; // Exponential backoff
+                                console.log(`Connection lost (${response.status}), retrying in ${waitTime/1000}s (attempt ${retryCount}/${maxRetries})...`);
+                                errorEl.textContent = `Connection lost, but analysis continues. Retrying in ${Math.round(waitTime/1000)}s... (attempt ${retryCount}/${maxRetries})`;
+                                errorEl.style.display = 'block';
+                                loadingEl.textContent = `⏳ Loading market data... (retrying, analysis continues in background)`;
+                                return new Promise((resolve) => {
+                                    setTimeout(() => {
+                                        attemptFetch().then(resolve).catch(resolve);
+                                    }, waitTime);
+                                });
+                            }
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data && data.error) {
+                            throw new Error(data.error);
+                        }
+                        return data;
+                    })
+                    .then(data => {
+                        if (!data) {
+                            // If we got here from a retry, data might be undefined, retry again
+                            if (retryCount < maxRetries) {
+                                retryCount++;
+                                const waitTime = retryDelay * retryCount;
+                                console.log(`No data received, retrying in ${waitTime/1000}s (attempt ${retryCount}/${maxRetries})...`);
+                                errorEl.textContent = `No data received, retrying in ${Math.round(waitTime/1000)}s... (attempt ${retryCount}/${maxRetries})`;
+                                errorEl.style.display = 'block';
+                                loadingEl.textContent = `⏳ Loading market data... (retrying, analysis continues in background)`;
+                                return new Promise((resolve, reject) => {
+                                    setTimeout(() => {
+                                        attemptFetch().then(resolve).catch(reject);
+                                    }, waitTime);
+                                });
+                            }
+                            throw new Error('No data received after multiple retries');
+                        }
+                        
+                        // Success - process the data
+                        processData(data);
+                        return data;
+                    })
+                    .catch(error => {
+                        if (error.name === 'AbortError') {
+                            throw error; // Don't retry on abort
+                        }
+                        // Retry on network errors or 502/503
+                        if ((error.message.includes('502') || error.message.includes('503') || error.message.includes('Failed to fetch')) && retryCount < maxRetries) {
+                            retryCount++;
+                            const waitTime = retryDelay * retryCount;
+                            console.log(`Error: ${error.message}, retrying in ${waitTime/1000}s (attempt ${retryCount}/${maxRetries})...`);
+                            errorEl.textContent = `Connection error, retrying in ${Math.round(waitTime/1000)}s... (attempt ${retryCount}/${maxRetries}). Analysis continues in background.`;
+                            errorEl.style.display = 'block';
+                            loadingEl.textContent = `⏳ Loading market data... (retrying, analysis continues in background)`;
+                            return new Promise((resolve, reject) => {
+                                setTimeout(() => {
+                                    attemptFetch().then(resolve).catch(reject);
+                                }, waitTime);
+                            });
+                        }
+                        throw error;
+                    });
+                };
+                
+                const processData = (data) => {
                     // Sort sectors by combined score (highest first)
                     data.sectors.sort((a, b) => (b.avg_z + (b.avg_score || 0)) - (a.avg_z + (a.avg_score || 0)));
 
@@ -1382,24 +1449,30 @@
                     // Hide loading, show content
                     loadingEl.style.display = 'none';
                     containerEl.style.display = 'grid';
-                })
-                .catch(error => {
+                    errorEl.style.display = 'none'; // Hide any error messages
+                };
+                
+                // Start the fetch attempt
+                attemptFetch().catch(error => {
                     clearTimeout(timeoutId); // Clear timeout on error
-                    console.error('Error loading data:', error);
+                    console.error('Final error after all retries:', error);
                     const isDeployed = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
                     let errorMsg = `Error loading data: ${error.message}`;
                     if (error.name === 'AbortError') {
-                        errorMsg = `Request timed out after 15 minutes. The analysis is taking longer than expected. Please try again or check Render logs.`;
+                        errorMsg = `Request timed out after 2 hours. The analysis is taking longer than expected. Please try refreshing the page or check Render logs.`;
                     } else if (isDeployed) {
-                        errorMsg += `. The backend service may be starting up (first request can take 3-5 minutes on free tier) or there may be an issue with the Render deployment. Check the Render logs for details.`;
+                        if (retryCount >= maxRetries) {
+                            errorMsg = `Failed after ${maxRetries} retry attempts. The analysis may still be running in the background. Please wait a few minutes and refresh the page, or check Render logs for progress.`;
+                        } else {
+                            errorMsg += `. The backend service may be starting up (first request can take 3-5 minutes on free tier) or there may be an issue with the Render deployment. Check the Render logs for details.`;
+                        }
                     } else {
                         errorMsg += `. Make sure the Flask server is running. Use START_DASHBOARD.bat to start it.`;
                     }
                     errorEl.textContent = errorMsg;
                     errorEl.style.display = 'block';
                     loadingEl.style.display = 'none';
-                })
-                .finally(() => {
+                    containerEl.style.display = 'none';
                     if (refreshBtn) refreshBtn.disabled = false;
                 });
             } catch (error) {
