@@ -1874,6 +1874,7 @@ def get_analysis_results():
     This function replaces main() and is called by the frontend.
     It formats the results to match what the frontend expects.
     """
+    global analysis_progress  # Declare global at function level
     try:
         import time
         import sys
@@ -1885,7 +1886,6 @@ def get_analysis_results():
         sys.stdout.flush()
         
         # Initialize progress tracking
-        global analysis_progress
         analysis_progress = {
             "status": "downloading",
             "stage": "Initializing",
@@ -2430,7 +2430,6 @@ def get_analysis_results():
         tb_str = traceback.format_exc()
         
         # Update progress with error
-        global analysis_progress
         analysis_progress["status"] = "error"
         analysis_progress["error"] = error_msg
         analysis_progress["last_update"] = time.time()
