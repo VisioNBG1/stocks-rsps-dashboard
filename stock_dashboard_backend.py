@@ -476,14 +476,18 @@ def ma_function_avg(source, length, smoothing):
 
 def calc_trend_score_avg(src, length):
     """Trend Score calculation"""
+    # Convert to numpy array for reliable position-based indexing
+    src_values = src.values
     total = pd.Series(index=src.index, dtype=float)
-    for i in range(length, len(src)):
+    
+    for i in range(length, len(src_values)):
         score = 0.0
         for j in range(1, length + 1):
-            # Check bounds for both indices
-            if i - j >= 0 and i < len(src) and (i - j) < len(src):
+            idx_prev = i - j
+            # Check bounds - both indices must be valid
+            if idx_prev >= 0 and i < len(src_values) and idx_prev < len(src_values):
                 try:
-                    score += 1 if src.iloc[i] >= src.iloc[i - j] else -1
+                    score += 1 if src_values[i] >= src_values[idx_prev] else -1
                 except (IndexError, KeyError):
                     # Skip if index is out of bounds
                     continue
