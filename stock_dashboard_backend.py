@@ -11,6 +11,7 @@ import os
 import json
 from datetime import datetime, timedelta
 import time
+import threading
 
 # Disable yfinance cache to avoid "database is locked" errors in multi-worker environments
 # Set environment variable to disable cache
@@ -45,6 +46,9 @@ analysis_progress = {
     "results": None,
     "error": None
 }
+
+# Lock to prevent multiple analyses from running simultaneously
+analysis_lock = threading.Lock()
 
 # --- CONFIGURATION (Based on your PineScript inputs) ---
 CONFIG = {
@@ -1868,16 +1872,24 @@ def save_cache(data):
     except Exception as e:
         print(f"  [!] Error saving cache: {e}")
 
-@app.route('/analyze', methods=['GET'])
-def get_analysis_results():
+def run_analysis_logic(force_refresh=False):
     """
-    This function replaces main() and is called by the frontend.
-    It formats the results to match what the frontend expects.
+    Core analysis logic that can be called from HTTP endpoint or background thread.
+    Returns the response data dictionary.
     """
-    global analysis_progress  # Declare global at function level
+    global analysis_progress, analysis_lock  # Declare global at function level
+    import time
+    import sys
+    
+    # Check if analysis is already running
+    if not analysis_lock.acquire(blocking=False):
+        # Analysis already running, return current progress
+        if analysis_progress["status"] in ["downloading", "analyzing", "ratio_analysis", "backtesting"]:
+            raise Exception("Analysis already in progress. Please wait for it to complete.")
+        # If not running, try to acquire lock
+        analysis_lock.acquire()
+    
     try:
-        import time
-        import sys
         start_time = time.time()
         # Force flush to ensure logs appear immediately
         print(f"\n{'='*60}", flush=True)
@@ -1898,9 +1910,6 @@ def get_analysis_results():
             "error": None
         }
         
-        # Check if we should use cache or force refresh
-        force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
-        
         # Try to load from cache first (unless force refresh)
         if not force_refresh:
             cached_data = load_cache()
@@ -1910,7 +1919,7 @@ def get_analysis_results():
                 analysis_progress["status"] = "complete"
                 analysis_progress["results"] = cached_data
                 analysis_progress["message"] = "Loaded from cache"
-                return jsonify(cached_data)
+                return cached_data  # Return dict, not jsonify
         
         if force_refresh:
             print("  Force refresh requested - recalculating all values...")
@@ -2408,19 +2417,12 @@ def get_analysis_results():
         analysis_progress["results"] = response_data
         analysis_progress["last_update"] = time.time()
         
-        # Update progress as complete
-        analysis_progress["status"] = "complete"
-        analysis_progress["stage"] = "Complete"
-        analysis_progress["message"] = "Analysis complete!"
-        analysis_progress["results"] = response_data
-        analysis_progress["last_update"] = time.time()
-        
         elapsed = time.time() - start_time
         print(f"\n{'='*60}")
         print(f"✓ Analysis complete! Total time: {elapsed:.2f}s ({elapsed/60:.2f} minutes)")
         print(f"{'='*60}\n")
         
-        return jsonify(response_data)
+        return response_data  # Return dict, not jsonify
         
     except Exception as e:
         import sys
@@ -2449,12 +2451,91 @@ def get_analysis_results():
         print(tb_str, file=sys.stderr)
         sys.stderr.flush()
         
+        # Return error response (raise exception for background thread to catch)
+        raise Exception(f"Server error: {error_msg}")
+    finally:
+        # Always release the lock
+        analysis_lock.release()
+
+@app.route('/analyze', methods=['GET'])
+def get_analysis_results():
+    """
+    HTTP endpoint that calls the core analysis logic.
+    """
+    try:
+        force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+        result = run_analysis_logic(force_refresh=force_refresh)
+        return jsonify(result)
+    except Exception as e:
+        import sys
+        import traceback
+        error_type = type(e).__name__
+        error_msg = str(e)
+        tb_str = traceback.format_exc()
+        
+        # Print to stdout (visible in Render logs) - force flush
+        print(f"\n{'='*60}", flush=True)
+        print(f"✗ FATAL ERROR in /analyze endpoint", flush=True)
+        print(f"{'='*60}", flush=True)
+        print(f"Error Type: {error_type}", flush=True)
+        print(f"Error Message: {error_msg}", flush=True)
+        print(f"\nFull Traceback:", flush=True)
+        print(tb_str, flush=True)
+        print(f"{'='*60}\n", flush=True)
+        sys.stdout.flush()
+        
         # Return error response
         return jsonify({
             "error": f"Server error: {error_msg}",
             "error_type": error_type
         }), 500
 
+
+# --- Background Analysis Thread ---
+def start_background_analysis():
+    """Start analysis automatically in background thread after a short delay"""
+    def run_analysis():
+        # Wait 10 seconds for server to fully start
+        time.sleep(10)
+        
+        # Check if cache exists
+        cached_data = load_cache()
+        if cached_data:
+            print("\n" + "="*60, flush=True)
+            print("✓ Cache found - analysis already completed", flush=True)
+            print("="*60 + "\n", flush=True)
+            global analysis_progress
+            analysis_progress["status"] = "complete"
+            analysis_progress["results"] = cached_data
+            analysis_progress["message"] = "Loaded from cache"
+            return
+        
+        # No cache - start analysis automatically
+        print("\n" + "="*60, flush=True)
+        print("🚀 Starting automatic background analysis...", flush=True)
+        print("   (No cache found - will calculate fresh data)", flush=True)
+        print("="*60 + "\n", flush=True)
+        
+        # Call the analysis function directly
+        try:
+            run_analysis_logic(force_refresh=False)
+        except Exception as e:
+            print(f"\n⚠ Error in background analysis: {e}", flush=True)
+            import traceback
+            import sys
+            traceback.print_exc(file=sys.stderr)
+            sys.stderr.flush()
+    
+    # Start background thread
+    thread = threading.Thread(target=run_analysis, daemon=True)
+    thread.start()
+    print("✓ Background analysis thread started (will check cache and run if needed)", flush=True)
+
+# Start background analysis when module loads (for gunicorn)
+# Only start if not already running (to avoid duplicate threads)
+if not hasattr(app, '_background_analysis_started'):
+    app._background_analysis_started = True
+    start_background_analysis()
 
 # --- Run Flask Server ---
 if __name__ == '__main__':
