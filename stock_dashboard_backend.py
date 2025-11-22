@@ -2651,42 +2651,39 @@ def trigger_auto_redeploy(stage):
         
         if render_api_key and render_service_id:
             try:
-                # Render API endpoint to trigger deploy
-                # According to Render API docs, we need to POST to /deploys with service_id
-                api_url = "https://api.render.com/v1/deploys"
+                # Render API: Create deploy for service
+                # Endpoint: POST /v1/services/{serviceId}/deploys
+                # According to Render API, this endpoint expects empty body or no body
+                api_url = f"https://api.render.com/v1/services/{render_service_id}/deploys"
                 headers = {
                     "Authorization": f"Bearer {render_api_key}",
-                    "Accept": "application/json",
-                    "Content-Type": "application/json"
-                }
-                # Render API expects serviceId (camelCase) not service_id
-                payload = {
-                    "serviceId": render_service_id,
-                    "clearCache": False
+                    "Accept": "application/json"
                 }
                 
-                response = requests.post(api_url, json=payload, headers=headers, timeout=10)
+                # Try with empty body first (most common for deploy triggers)
+                response = requests.post(api_url, headers=headers, timeout=10)
+                
                 if response.status_code in [200, 201]:
-                    deploy_data = response.json()
-                    deploy_id = deploy_data.get('id', deploy_data.get('deploy', {}).get('id', 'unknown'))
-                    print(f"  ✅ Auto-redeploy triggered via Render API (Deploy ID: {deploy_id})", flush=True)
-                    print(f"  🔄 Render will redeploy automatically in a few moments...", flush=True)
-                    return True
+                    try:
+                        deploy_data = response.json()
+                        deploy_id = deploy_data.get('id') or deploy_data.get('deploy', {}).get('id', 'unknown')
+                        print(f"  ✅ Auto-redeploy triggered via Render API (Deploy ID: {deploy_id})", flush=True)
+                        print(f"  🔄 Render will redeploy automatically in a few moments...", flush=True)
+                        return True
+                    except:
+                        print(f"  ✅ Auto-redeploy triggered (status {response.status_code})", flush=True)
+                        return True
                 else:
                     error_text = response.text
                     print(f"  ⚠ Render API returned status {response.status_code}: {error_text}", flush=True)
-                    # Try alternative endpoint format
+                    # Try with empty JSON payload
                     try:
-                        alt_url = f"https://api.render.com/v1/services/{render_service_id}/deploys"
-                        alt_response = requests.post(alt_url, json={"clearCache": False}, headers=headers, timeout=10)
+                        alt_response = requests.post(api_url, json={}, headers=headers, timeout=10)
                         if alt_response.status_code in [200, 201]:
-                            alt_data = alt_response.json()
-                            deploy_id = alt_data.get('id', alt_data.get('deploy', {}).get('id', 'unknown'))
-                            print(f"  ✅ Auto-redeploy triggered via alternative endpoint (Deploy ID: {deploy_id})", flush=True)
-                            print(f"  🔄 Render will redeploy automatically in a few moments...", flush=True)
+                            print(f"  ✅ Auto-redeploy triggered (empty JSON payload worked)", flush=True)
                             return True
                     except Exception as alt_error:
-                        print(f"  ⚠ Alternative endpoint also failed: {alt_error}", flush=True)
+                        print(f"  ⚠ Alternative request format also failed: {alt_error}", flush=True)
             except Exception as api_error:
                 print(f"  ⚠ Failed to trigger via Render API: {api_error}", flush=True)
         
