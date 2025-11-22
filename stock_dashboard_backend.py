@@ -15,6 +15,14 @@ import threading
 import schedule
 from datetime import datetime, timedelta
 
+# Supabase for persistent checkpoint storage
+try:
+    from supabase import create_client, Client
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
+    print("  ⚠ Supabase not available - checkpoints will use local storage only")
+
 # Disable yfinance cache to avoid "database is locked" errors in multi-worker environments
 # Set environment variable to disable cache
 os.environ['YFINANCE_CACHE_DISABLE'] = '1'
@@ -2520,6 +2528,88 @@ else:
 # Create stock data cache directory if it doesn't exist
 os.makedirs(STOCK_DATA_CACHE_DIR, exist_ok=True)
 
+# Initialize Supabase client for persistent checkpoint storage
+supabase_client = None
+if SUPABASE_AVAILABLE:
+    supabase_url = os.environ.get('SUPABASE_URL')
+    supabase_key = os.environ.get('SUPABASE_KEY')
+    if supabase_url and supabase_key:
+        try:
+            supabase_client = create_client(supabase_url, supabase_key)
+            print("  ✓ Supabase client initialized for checkpoint storage")
+        except Exception as e:
+            print(f"  ⚠ Failed to initialize Supabase: {e}")
+            supabase_client = None
+    else:
+        print("  ⚠ Supabase credentials not found in environment variables")
+        print("  ℹ Checkpoints will use local storage only")
+        print("  ℹ To enable Supabase, set SUPABASE_URL and SUPABASE_KEY environment variables")
+
+def save_checkpoint_to_supabase(data):
+    """Save checkpoint data to Supabase database"""
+    if not supabase_client:
+        return False
+    
+    try:
+        # Prepare data for Supabase
+        # Note: Supabase JSONB column can store JSON directly, but we'll use JSON string for compatibility
+        checkpoint_data = {
+            "id": "main_checkpoint",  # Single checkpoint record
+            "data": json.dumps(data, default=str),  # Store as JSON string
+            "updated_at": datetime.now().isoformat(),
+            "stage": data.get("_stage", "unknown"),
+            "is_partial": data.get("_partial", False)
+        }
+        
+        # Upsert (insert or update) the checkpoint
+        # Use insert with on_conflict for upsert behavior
+        try:
+            result = supabase_client.table("checkpoints").upsert(
+                checkpoint_data,
+                on_conflict="id"
+            ).execute()
+        except Exception as upsert_error:
+            # Fallback: try insert, then update if exists
+            try:
+                supabase_client.table("checkpoints").insert(checkpoint_data).execute()
+            except:
+                # Update if insert fails (record exists)
+                supabase_client.table("checkpoints").update({
+                    "data": checkpoint_data["data"],
+                    "updated_at": checkpoint_data["updated_at"],
+                    "stage": checkpoint_data["stage"],
+                    "is_partial": checkpoint_data["is_partial"]
+                }).eq("id", "main_checkpoint").execute()
+        
+        print(f"  ✓ Checkpoint saved to Supabase database", flush=True)
+        return True
+    except Exception as e:
+        print(f"  ⚠ Failed to save checkpoint to Supabase: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return False
+
+def load_checkpoint_from_supabase():
+    """Load checkpoint data from Supabase database"""
+    if not supabase_client:
+        return None
+    
+    try:
+        result = supabase_client.table("checkpoints").select("*").eq("id", "main_checkpoint").execute()
+        
+        if result.data and len(result.data) > 0:
+            checkpoint_record = result.data[0]
+            # Parse JSON string back to dict
+            data = json.loads(checkpoint_record["data"])
+            print(f"  ✓ Checkpoint loaded from Supabase (stage: {checkpoint_record.get('stage', 'unknown')})")
+            return data
+        else:
+            print(f"  ℹ No checkpoint found in Supabase")
+            return None
+    except Exception as e:
+        print(f"  ⚠ Failed to load checkpoint from Supabase: {e}")
+        return None
+
 def trigger_auto_redeploy(stage):
     """
     Save checkpoint to a file that will be committed to trigger auto-redeploy.
@@ -2592,10 +2682,15 @@ def save_cache(data, is_partial=False, stage=None, processed_tickers=None):
         else:
             data["_partial"] = False
         
+        # Save to local file
         with open(CACHE_FILE, 'w') as f:
             json.dump(data, f, indent=2, default=str)
         file_size = os.path.getsize(CACHE_FILE)
         print(f"  ✓ Cache saved to {CACHE_FILE} ({file_size} bytes)", flush=True)
+        
+        # Also save to Supabase for persistence across deployments
+        if supabase_client:
+            save_checkpoint_to_supabase(data)
     except Exception as e:
         print(f"  [!] Error saving cache: {e}", flush=True)
 
