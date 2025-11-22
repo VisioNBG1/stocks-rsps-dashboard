@@ -12,10 +12,12 @@ ENV/
 analysis_cache.json
 stock_data_cache/
 *.csv
-.cache/
 .pytest_cache/
 .coverage
 htmlcov/
 dist/
 build/
 *.egg-info/
+# Allow .cache directory and trigger file for checkpoint system
+!.cache/
+!.redeploy_trigger

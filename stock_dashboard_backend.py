@@ -2503,18 +2503,52 @@ def backtest_rotation_strategy(stock_scores_history, initial_capital=10000):
 # On Fly.io free tier, storage is ephemeral (lost on restart)
 # To use persistent storage, create a volume: fly volumes create cache_data --size 1 --region fra
 # Then mount it in fly.toml and use /data/cache.json
+# Use app directory for cache (more persistent than /tmp on Render)
+# Render free plan: app directory persists better than /tmp
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+CACHE_DIR = os.path.join(APP_DIR, '.cache')
+os.makedirs(CACHE_DIR, exist_ok=True)
+
 if os.path.exists('/data'):
     CACHE_FILE = '/data/analysis_cache.json'
     STOCK_DATA_CACHE_DIR = '/data/stock_data_cache'
-elif os.path.exists('/tmp'):
-    CACHE_FILE = '/tmp/analysis_cache.json'
-    STOCK_DATA_CACHE_DIR = '/tmp/stock_data_cache'
 else:
-    CACHE_FILE = 'analysis_cache.json'
-    STOCK_DATA_CACHE_DIR = 'stock_data_cache'
+    # Use app directory cache (more persistent on Render free plan)
+    CACHE_FILE = os.path.join(CACHE_DIR, 'analysis_cache.json')
+    STOCK_DATA_CACHE_DIR = os.path.join(CACHE_DIR, 'stock_data_cache')
 
 # Create stock data cache directory if it doesn't exist
 os.makedirs(STOCK_DATA_CACHE_DIR, exist_ok=True)
+
+def trigger_auto_redeploy(stage):
+    """
+    Save checkpoint to a file that will be committed to trigger auto-redeploy.
+    Note: On Render, we can't commit directly, but we can save to a location
+    that will be picked up on the next manual deploy or we can use Render API.
+    For now, we'll save checkpoint data to a file and log instructions.
+    """
+    try:
+        import datetime
+        
+        # Save checkpoint marker file (this will be in the container, not committed)
+        # The actual cache is saved separately via save_cache()
+        checkpoint_marker = os.path.join(CACHE_DIR, 'checkpoint_marker.json')
+        marker_data = {
+            "stage": stage,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "message": "Checkpoint saved - manual redeploy needed or wait for auto-redeploy"
+        }
+        with open(checkpoint_marker, 'w') as f:
+            json.dump(marker_data, f, indent=2)
+        
+        print(f"  💡 To trigger auto-redeploy:", flush=True)
+        print(f"     1. The checkpoint is saved in: {CACHE_FILE}", flush=True)
+        print(f"     2. On Render dashboard, click 'Manual Deploy' to resume", flush=True)
+        print(f"     3. Or wait for the next automatic deployment", flush=True)
+        return True
+    except Exception as e:
+        print(f"  ⚠ Checkpoint marker save failed: {e}", flush=True)
+        return False
 
 def load_cache():
     """Load analysis results from cache file"""
@@ -2627,6 +2661,13 @@ def run_analysis_logic(force_refresh=False):
                 
                 # Save checkpoint
                 save_cache(checkpoint_data, is_partial=True, stage=current_stage, processed_tickers=processed_tickers)
+                
+                # Try to trigger auto-redeploy by updating a trigger file
+                try:
+                    trigger_auto_redeploy(current_stage)
+                except Exception as e:
+                    print(f"  ⚠ Could not trigger auto-redeploy: {e}", flush=True)
+                    print(f"  💡 Manual redeploy: Go to Render dashboard and click 'Manual Deploy'", flush=True)
                 
                 print(f"\n✓ Checkpoint saved successfully. Exiting gracefully...", flush=True)
                 print(f"🔄 Next deployment will resume from: {current_stage}", flush=True)
