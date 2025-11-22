@@ -2531,19 +2531,36 @@ os.makedirs(STOCK_DATA_CACHE_DIR, exist_ok=True)
 # Initialize Supabase client for persistent checkpoint storage
 supabase_client = None
 if SUPABASE_AVAILABLE:
-    supabase_url = os.environ.get('SUPABASE_URL')
-    supabase_key = os.environ.get('SUPABASE_KEY')
+    supabase_url = os.environ.get('SUPABASE_URL', '').strip()
+    supabase_key = os.environ.get('SUPABASE_KEY', '').strip()
+    
+    # Debug: Check what we got (without printing sensitive key)
+    if not supabase_url:
+        print("  ⚠ SUPABASE_URL environment variable is missing or empty")
+    if not supabase_key:
+        print("  ⚠ SUPABASE_KEY environment variable is missing or empty")
+    
     if supabase_url and supabase_key:
         try:
             supabase_client = create_client(supabase_url, supabase_key)
-            print("  ✓ Supabase client initialized for checkpoint storage")
+            print(f"  ✓ Supabase client initialized for checkpoint storage")
+            print(f"  ✓ Connected to: {supabase_url}")
         except Exception as e:
             print(f"  ⚠ Failed to initialize Supabase: {e}")
+            import traceback
+            traceback.print_exc()
             supabase_client = None
     else:
         print("  ⚠ Supabase credentials not found in environment variables")
         print("  ℹ Checkpoints will use local storage only")
-        print("  ℹ To enable Supabase, set SUPABASE_URL and SUPABASE_KEY environment variables")
+        print("  ℹ To enable Supabase:")
+        print("     1. Go to Render Dashboard → Your Service → Environment tab")
+        print("     2. Add SUPABASE_URL = https://fzuxkphassgtvfiupixv.supabase.co")
+        print("     3. Add SUPABASE_KEY = your_anon_key")
+        print("     4. Click 'Save Changes'")
+        print("     5. Manually redeploy the service")
+else:
+    print("  ⚠ Supabase library not available - install with: pip install supabase")
 
 def save_checkpoint_to_supabase(data):
     """Save checkpoint data to Supabase database"""
