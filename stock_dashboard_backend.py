@@ -2629,32 +2629,53 @@ def load_checkpoint_from_supabase():
 
 def trigger_auto_redeploy(stage):
     """
-    Save checkpoint to a file that will be committed to trigger auto-redeploy.
-    Note: On Render, we can't commit directly, but we can save to a location
-    that will be picked up on the next manual deploy or we can use Render API.
-    For now, we'll save checkpoint data to a file and log instructions.
+    Attempt to trigger auto-redeploy via Render API.
+    Falls back to manual instructions if API key not available.
     """
     try:
-        import datetime
+        import requests
         
-        # Save checkpoint marker file (this will be in the container, not committed)
-        # The actual cache is saved separately via save_cache()
-        checkpoint_marker = os.path.join(CACHE_DIR, 'checkpoint_marker.json')
-        marker_data = {
-            "stage": stage,
-            "timestamp": datetime.datetime.now().isoformat(),
-            "message": "Checkpoint saved - manual redeploy needed or wait for auto-redeploy"
-        }
-        with open(checkpoint_marker, 'w') as f:
-            json.dump(marker_data, f, indent=2)
+        # Try Render API to trigger redeploy
+        render_api_key = os.environ.get('RENDER_API_KEY', '').strip()
+        render_service_id = os.environ.get('RENDER_SERVICE_ID', '').strip()
         
-        print(f"  💡 To trigger auto-redeploy:", flush=True)
-        print(f"     1. The checkpoint is saved in: {CACHE_FILE}", flush=True)
-        print(f"     2. On Render dashboard, click 'Manual Deploy' to resume", flush=True)
-        print(f"     3. Or wait for the next automatic deployment", flush=True)
+        if render_api_key and render_service_id:
+            try:
+                # Render API endpoint to trigger deploy
+                api_url = f"https://api.render.com/v1/services/{render_service_id}/deploys"
+                headers = {
+                    "Authorization": f"Bearer {render_api_key}",
+                    "Accept": "application/json"
+                }
+                payload = {
+                    "clearCache": False
+                }
+                
+                response = requests.post(api_url, json=payload, headers=headers, timeout=10)
+                if response.status_code in [200, 201]:
+                    deploy_data = response.json()
+                    deploy_id = deploy_data.get('deploy', {}).get('id', 'unknown')
+                    print(f"  ✅ Auto-redeploy triggered via Render API (Deploy ID: {deploy_id})", flush=True)
+                    print(f"  🔄 Render will redeploy automatically in a few moments...", flush=True)
+                    return True
+                else:
+                    print(f"  ⚠ Render API returned status {response.status_code}: {response.text}", flush=True)
+            except Exception as api_error:
+                print(f"  ⚠ Failed to trigger via Render API: {api_error}", flush=True)
+        
+        # Fallback: Manual instructions
+        print(f"  💡 To resume analysis:", flush=True)
+        print(f"     1. Checkpoint saved to Supabase (persistent)", flush=True)
+        print(f"     2. Go to Render Dashboard → Your Service", flush=True)
+        print(f"     3. Click 'Manual Deploy' → 'Deploy latest commit'", flush=True)
+        print(f"     4. The system will automatically resume from checkpoint", flush=True)
+        print(f"", flush=True)
+        print(f"  💡 Optional: For auto-redeploy, add to Render Environment:", flush=True)
+        print(f"     - RENDER_API_KEY: Get from https://dashboard.render.com/account/api-keys", flush=True)
+        print(f"     - RENDER_SERVICE_ID: Found in your service URL or settings", flush=True)
         return True
     except Exception as e:
-        print(f"  ⚠ Checkpoint marker save failed: {e}", flush=True)
+        print(f"  ⚠ Auto-redeploy trigger failed: {e}", flush=True)
         return False
 
 def load_cache():
