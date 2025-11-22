@@ -2639,6 +2639,16 @@ def trigger_auto_redeploy(stage):
         render_api_key = os.environ.get('RENDER_API_KEY', '').strip()
         render_service_id = os.environ.get('RENDER_SERVICE_ID', '').strip()
         
+        # Debug: Check if we have the credentials (without printing sensitive data)
+        if not render_api_key:
+            print(f"  ℹ RENDER_API_KEY not set - auto-redeploy disabled", flush=True)
+        if not render_service_id:
+            print(f"  ℹ RENDER_SERVICE_ID not set - auto-redeploy disabled", flush=True)
+            print(f"  💡 To find Service ID:", flush=True)
+            print(f"     1. Go to Render Dashboard → Your Service", flush=True)
+            print(f"     2. Check URL: https://dashboard.render.com/web/[SERVICE_ID]", flush=True)
+            print(f"     3. Or go to Settings → Service Details → Service ID", flush=True)
+        
         if render_api_key and render_service_id:
             try:
                 # Render API endpoint to trigger deploy
