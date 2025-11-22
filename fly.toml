@@ -1,0 +1,32 @@
+# fly.toml app configuration file generated for stocks-rsps-dashboard on 2025-11-20T16:58:39Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'stocks-rsps-dashboard'
+primary_region = 'fra'
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+[processes]
+  app = "gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 7200 --graceful-timeout 7200 --keep-alive 5 stock_dashboard_backend:app"
+
+[[vm]]
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 512
+
+# Persistent volume for cache (requires paid plan)
+# To create: fly volumes create cache_data --size 1 --region fra
+# Then uncomment the mount below
+# [[mounts]]
+#   source = "cache_data"
+#   destination = "/data"
