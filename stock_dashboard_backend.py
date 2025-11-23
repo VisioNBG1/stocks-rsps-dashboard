@@ -2762,11 +2762,19 @@ def save_stock_data_to_supabase(ticker, stage, data, date_str=None):
         # Convert DataFrame to JSON if needed
         if isinstance(data, pd.DataFrame):
             # Convert DataFrame to dict with proper date handling
+            # Ensure we preserve the structure correctly
             data_dict = {
+                "_type": "DataFrame",
                 "columns": list(data.columns),
                 "index": [str(idx) for idx in data.index],
                 "data": data.values.tolist()
             }
+            # Verify structure
+            if len(data_dict["data"]) > 0:
+                num_cols = len(data_dict["columns"])
+                num_data_cols = len(data_dict["data"][0]) if data_dict["data"] else 0
+                if num_cols != num_data_cols:
+                    print(f"  ⚠ Warning: Column mismatch for {ticker} - {num_cols} cols vs {num_data_cols} data cols", flush=True)
         elif isinstance(data, dict):
             data_dict = data
         else:
@@ -2812,18 +2820,73 @@ def load_stock_data_from_supabase(ticker, stage, date_str=None):
             
             # Convert back to DataFrame if it was stored as one
             if isinstance(data_dict, dict) and "columns" in data_dict and "data" in data_dict:
-                df = pd.DataFrame(
-                    data_dict["data"],
-                    columns=data_dict["columns"],
-                    index=pd.to_datetime(data_dict["index"]) if "index" in data_dict else None
-                )
-                return df
+                try:
+                    columns = data_dict.get("columns", [])
+                    data_rows = data_dict.get("data", [])
+                    index_data = data_dict.get("index", [])
+                    
+                    # Ensure data_rows is a list of lists
+                    if not isinstance(data_rows, list) or len(data_rows) == 0:
+                        print(f"  ⚠ No data rows found for {ticker}", flush=True)
+                        return None
+                    
+                    # Verify column count matches
+                    if len(columns) == 0:
+                        print(f"  ⚠ No columns found for {ticker}", flush=True)
+                        return None
+                    
+                    # Check first row to verify structure
+                    if len(data_rows) > 0:
+                        first_row_cols = len(data_rows[0]) if isinstance(data_rows[0], list) else 0
+                        if first_row_cols != len(columns):
+                            print(f"  ⚠ Column mismatch for {ticker}: {len(columns)} columns but {first_row_cols} values in first row", flush=True)
+                            # Try to fix by truncating or padding
+                            if first_row_cols > len(columns):
+                                # More data than columns - truncate data
+                                data_rows = [row[:len(columns)] for row in data_rows]
+                            elif first_row_cols < len(columns):
+                                # Less data than columns - can't fix, return None
+                                print(f"     Cannot fix: need {len(columns)} columns but have {first_row_cols}", flush=True)
+                                return None
+                    
+                    # Create DataFrame - don't pass index in constructor to avoid confusion
+                    df = pd.DataFrame(data_rows, columns=columns)
+                    
+                    # Set index separately if available and length matches
+                    if index_data and len(index_data) == len(df):
+                        try:
+                            df.index = pd.to_datetime(index_data)
+                        except Exception as idx_error:
+                            # If date parsing fails, try using as string index
+                            try:
+                                df.index = index_data
+                            except:
+                                print(f"  ⚠ Could not set index for {ticker}: {idx_error}", flush=True)
+                    elif index_data and len(index_data) != len(df):
+                        print(f"  ⚠ Index length mismatch for {ticker}: {len(index_data)} index values vs {len(df)} rows", flush=True)
+                    
+                    if df.empty:
+                        print(f"  ⚠ Empty DataFrame for {ticker}", flush=True)
+                        return None
+                    
+                    return df
+                except Exception as df_error:
+                    print(f"  ⚠ Error reconstructing DataFrame for {ticker}: {df_error}", flush=True)
+                    print(f"     Data structure: columns={len(data_dict.get('columns', []))}, rows={len(data_dict.get('data', []))}, index={len(data_dict.get('index', []))}", flush=True)
+                    if len(data_dict.get('data', [])) > 0:
+                        print(f"     First row length: {len(data_dict.get('data', [])[0]) if data_dict.get('data', []) else 0}", flush=True)
+                    import traceback
+                    traceback.print_exc()
+                    return None
             else:
+                # Not a DataFrame structure, return as dict
                 return data_dict
         else:
             return None
     except Exception as e:
         print(f"  ⚠ Error loading stock data for {ticker} (stage: {stage}): {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         return None
 
 def get_downloaded_stocks_from_supabase(date_str=None):
@@ -2835,14 +2898,20 @@ def get_downloaded_stocks_from_supabase(date_str=None):
         if date_str is None:
             date_str = datetime.now().strftime("%Y-%m-%d")
         
+        # Get all downloaded stocks for today's date
         result = supabase_client.table("stock_data").select("ticker").eq("stage", "downloaded").eq("date_str", date_str).execute()
         
         if result.data:
-            return list(set([record["ticker"] for record in result.data]))
+            tickers = list(set([record.get("ticker") for record in result.data if record.get("ticker")]))
+            print(f"  📊 Found {len(tickers)} downloaded stocks in Supabase for {date_str}", flush=True)
+            return tickers
         else:
+            print(f"  ℹ No downloaded stocks found in Supabase for {date_str}", flush=True)
             return []
     except Exception as e:
         print(f"  ⚠ Error getting downloaded stocks from Supabase: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         return []
 
 def clear_supabase_checkpoints():
