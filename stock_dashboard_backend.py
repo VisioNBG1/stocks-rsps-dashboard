@@ -3776,9 +3776,9 @@ def run_analysis_logic(force_refresh=False):
                                         "z_avg": stock["z"],
                                         "avg_score": stock["avg_score"]
                                     })
-                else:
-                    # Checkpoint is at downloading stage - stocks need to be processed
-                    print(f"  ℹ Checkpoint is at downloading stage - will process loaded stocks", flush=True)
+                    else:
+                        # Checkpoint is at downloading stage - stocks need to be processed
+                        print(f"  ℹ Checkpoint is at downloading stage - will process loaded stocks", flush=True)
         
         # Process stocks if we have batch_data and haven't loaded results from checkpoint
         if batch_data and not results:
