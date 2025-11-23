@@ -2825,7 +2825,7 @@ def load_cache():
                     # Also save to Supabase if available (for persistence)
                     if supabase_client and data:
                         try:
-                            save_checkpoint_to_supabase(data)
+                            save_checkpoint_to_supabase(data, checkpoint_id=get_checkpoint_id())
                         except:
                             pass
                     return data
@@ -2869,9 +2869,9 @@ def save_cache(data, is_partial=False, stage=None, processed_tickers=None):
         file_size = os.path.getsize(CACHE_FILE)
         print(f"  ✓ Cache saved to {CACHE_FILE} ({file_size} bytes)", flush=True)
         
-        # Also save to Supabase for persistence across deployments
+        # Also save to Supabase for persistence across deployments (uses date-based ID)
         if supabase_client:
-            save_checkpoint_to_supabase(data)
+            save_checkpoint_to_supabase(data, checkpoint_id=get_checkpoint_id())
     except Exception as e:
         print(f"  [!] Error saving cache: {e}", flush=True)
 
