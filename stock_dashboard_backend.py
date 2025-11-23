@@ -3367,6 +3367,10 @@ def run_analysis_logic(force_refresh=False):
                                 sys.stderr.flush()
                                 break  # Move to next stock
 
+        # Initialize results if not already initialized (e.g., when resuming from checkpoint)
+        if 'results' not in locals():
+            results = []
+        
         print(f"\n✓ Finished processing {len(results)} stocks", flush=True)
         sys.stdout.flush()
 
