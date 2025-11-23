@@ -2703,18 +2703,50 @@ def trigger_auto_redeploy(stage):
         return False
 
 def load_cache():
-    """Load analysis results from cache file"""
-    if os.path.exists(CACHE_FILE):
+    """Load analysis results from cache - tries Supabase first, then local files"""
+    # Try Supabase first (persistent across deployments)
+    print(f"  🔍 Checking Supabase for checkpoint...", flush=True)
+    supabase_data = load_checkpoint_from_supabase()
+    if supabase_data:
+        # Also save to local file for faster access
         try:
-            with open(CACHE_FILE, 'r') as f:
-                data = json.load(f)
-                print(f"  ✓ Cache file found: {CACHE_FILE} ({os.path.getsize(CACHE_FILE)} bytes)")
-                return data
+            cache_dir = os.path.dirname(CACHE_FILE)
+            if cache_dir and not os.path.exists(cache_dir):
+                os.makedirs(cache_dir, exist_ok=True)
+            with open(CACHE_FILE, 'w') as f:
+                json.dump(supabase_data, f, indent=2, default=str)
+            print(f"  ✓ Also saved Supabase checkpoint to local file for faster access", flush=True)
         except Exception as e:
-            print(f"  [!] Error loading cache: {e}")
-            return None
-    else:
-        print(f"  ℹ No cache file found at {CACHE_FILE}")
+            print(f"  ⚠ Could not save Supabase data to local file: {e}", flush=True)
+        return supabase_data
+    
+    # Fallback to local cache files
+    print(f"  🔍 Checking local cache files...", flush=True)
+    cache_locations = [
+        CACHE_FILE,  # Primary location (app directory)
+        os.path.join(APP_DIR, 'analysis_cache.json'),  # Fallback in app dir
+        '/tmp/analysis_cache.json',  # Fallback to /tmp
+        'analysis_cache.json'  # Fallback to current directory
+    ]
+    
+    for cache_path in cache_locations:
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, 'r') as f:
+                    data = json.load(f)
+                    print(f"  ✓ Cache file found: {cache_path} ({os.path.getsize(cache_path)} bytes)", flush=True)
+                    # Also save to Supabase if available (for persistence)
+                    if supabase_client and data:
+                        try:
+                            save_checkpoint_to_supabase(data)
+                        except:
+                            pass
+                    return data
+            except Exception as e:
+                print(f"  [!] Error loading cache from {cache_path}: {e}", flush=True)
+                continue
+    
+    print(f"  ℹ No cache found in Supabase or local files", flush=True)
     return None
 
 def save_cache(data, is_partial=False, stage=None, processed_tickers=None):
@@ -2850,11 +2882,15 @@ def run_analysis_logic(force_refresh=False):
                 else:
                     # Partial cache - resume from checkpoint
                     resume_from_stage = cached_data.get("_stage", None)
-                    print(f"✓ Found partial cache - resuming from stage: {resume_from_stage}")
-                    if resume_from_stage == "stock_analysis_complete":
-                        print("  Resuming from ratio analysis (stock analysis already complete)")
+                    print(f"✓ Found partial cache - resuming from stage: {resume_from_stage}", flush=True)
+                    if resume_from_stage == "downloading":
+                        downloaded_stocks = cached_data.get("downloaded_stocks", [])
+                        print(f"  Resuming from downloading stage - {len(downloaded_stocks)} stocks already downloaded", flush=True)
+                        print(f"  Already downloaded: {', '.join(downloaded_stocks[:10])}{'...' if len(downloaded_stocks) > 10 else ''}", flush=True)
+                    elif resume_from_stage == "stock_analysis_complete":
+                        print("  Resuming from ratio analysis (stock analysis already complete)", flush=True)
                     elif resume_from_stage == "ratio_analysis_complete":
-                        print("  Resuming from backtesting (stock and ratio analysis already complete)")
+                        print("  Resuming from backtesting (stock and ratio analysis already complete)", flush=True)
         
         if force_refresh:
             print("  Force refresh requested - recalculating all values...")
@@ -2878,6 +2914,31 @@ def run_analysis_logic(force_refresh=False):
         if resume_from_stage in ["stock_analysis_complete", "ratio_analysis_complete"]:
             print("  ⏭ Skipping download (resuming from checkpoint)...", flush=True)
             batch_data = {}  # Empty batch_data since we're skipping download
+        elif resume_from_stage == "downloading":
+            # Resume from downloading stage - skip already downloaded stocks
+            cached_data = load_cache()
+            downloaded_stocks = cached_data.get("downloaded_stocks", []) if cached_data else []
+            print(f"  🔄 Resuming download - {len(downloaded_stocks)} stocks already downloaded", flush=True)
+            print(f"  📋 Already downloaded: {', '.join(downloaded_stocks[:10])}{'...' if len(downloaded_stocks) > 10 else ''}", flush=True)
+            
+            # Load already downloaded stocks from cache files
+            batch_data = {}
+            for ticker in downloaded_stocks:
+                ticker_data = load_cached_stock_data(ticker)
+                if ticker_data is not None and not ticker_data.empty:
+                    batch_data[ticker] = ticker_data
+                    print(f"  ✓ Loaded cached data for {ticker} ({len(ticker_data)} rows)", flush=True)
+            
+            # Filter out already downloaded stocks
+            remaining_tickers = [t for t in all_tickers if t not in downloaded_stocks]
+            print(f"  📥 Remaining stocks to download: {len(remaining_tickers)}/{len(all_tickers)}", flush=True)
+            
+            if not remaining_tickers:
+                print("  ✓ All stocks already downloaded, proceeding to analysis...", flush=True)
+            else:
+                # Update all_tickers to only include remaining ones
+                all_tickers = remaining_tickers
+                print(f"  Starting download of remaining {len(remaining_tickers)} stocks...", flush=True)
         else:
             print(f"  Downloading data for {len(all_tickers)} stocks individually (to avoid rate limits)...")
             analysis_progress["status"] = "downloading"
