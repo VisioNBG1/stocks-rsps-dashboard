@@ -3130,6 +3130,9 @@ def run_analysis_logic(force_refresh=False):
         # Initialize results list early (needed for all code paths)
         results = []
         
+        # Track if we're resuming from downloading (stocks loaded but not processed yet)
+        was_resuming_from_downloading = (resume_from_stage == "downloading")
+        
         # Check if we should skip stock analysis (resuming from checkpoint)
         processed_tickers_from_checkpoint = []
         if resume_from_stage in ["stock_analysis_complete", "ratio_analysis_complete"]:
@@ -3153,8 +3156,9 @@ def run_analysis_logic(force_refresh=False):
             else:
                 print("  ⚠ Could not load cached sectors, starting fresh...", flush=True)
                 resume_from_stage = None  # Reset to start fresh
-        elif not force_refresh:
+        elif not force_refresh and not was_resuming_from_downloading:
             # Check if we have a partial checkpoint with processed_tickers
+            # (but NOT if we just resumed from downloading - those need to be processed)
             cached_data = load_cache()
             if cached_data and cached_data.get("_partial") and cached_data.get("_processed_tickers"):
                 processed_tickers_from_checkpoint = cached_data.get("_processed_tickers", [])
@@ -3170,7 +3174,9 @@ def run_analysis_logic(force_refresh=False):
                                 "z_avg": stock["z"],
                                 "avg_score": stock["avg_score"]
                             })
-        else:
+        
+        # Process stocks if we have batch_data and haven't loaded results from checkpoint
+        if batch_data and not results:
             # Process downloaded data
             results = []
             processed_tickers = []  # Track processed tickers for checkpoint
