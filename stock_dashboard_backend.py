@@ -2976,8 +2976,12 @@ def run_analysis_logic(force_refresh=False):
             # Resume from downloading stage - skip already downloaded stocks
             cached_data = load_cache()
             downloaded_stocks = cached_data.get("downloaded_stocks", []) if cached_data else []
+            # Ensure downloaded_stocks is a list and remove duplicates
+            if not isinstance(downloaded_stocks, list):
+                downloaded_stocks = []
+            downloaded_stocks = list(set(downloaded_stocks))  # Remove duplicates
             print(f"  🔄 Resuming download - {len(downloaded_stocks)} stocks already downloaded", flush=True)
-            print(f"  📋 Already downloaded: {', '.join(downloaded_stocks[:10])}{'...' if len(downloaded_stocks) > 10 else ''}", flush=True)
+            print(f"  📋 Already downloaded: {', '.join(sorted(downloaded_stocks)[:10])}{'...' if len(downloaded_stocks) > 10 else ''}", flush=True)
             
             # Load already downloaded stocks from cache files
             batch_data = {}
@@ -2986,6 +2990,8 @@ def run_analysis_logic(force_refresh=False):
                 if ticker_data is not None and not ticker_data.empty:
                     batch_data[ticker] = ticker_data
                     print(f"  ✓ Loaded cached data for {ticker} ({len(ticker_data)} rows)", flush=True)
+                else:
+                    print(f"  ⚠ Cached data for {ticker} not found or empty, will re-download", flush=True)
             
             # Filter out already downloaded stocks
             remaining_tickers = [t for t in all_tickers if t not in downloaded_stocks]
@@ -3036,14 +3042,30 @@ def run_analysis_logic(force_refresh=False):
             
             for idx, ticker in enumerate(all_tickers, 1):
                 # Check timeout before each download
-                if check_timeout_and_save_checkpoint("downloading", {"downloaded_stocks": list(batch_data.keys())}, list(batch_data.keys())):
+                # Merge existing downloaded_stocks with current batch_data to preserve all downloaded stocks
+                current_downloaded = list(set(list(batch_data.keys())))  # Current session stocks
+                # Load existing checkpoint to get all previously downloaded stocks
+                try:
+                    existing_checkpoint = load_cache()
+                    if existing_checkpoint and existing_checkpoint.get("downloaded_stocks"):
+                        existing_downloaded = existing_checkpoint.get("downloaded_stocks", [])
+                        if not isinstance(existing_downloaded, list):
+                            existing_downloaded = []
+                        # Merge and remove duplicates
+                        all_downloaded = list(set(current_downloaded + existing_downloaded))
+                    else:
+                        all_downloaded = current_downloaded
+                except:
+                    all_downloaded = current_downloaded
+                
+                if check_timeout_and_save_checkpoint("downloading", {"downloaded_stocks": all_downloaded}, all_downloaded):
                     partial_response = {
                         "_partial": True,
                         "_stage": "downloading",
-                        "downloaded_stocks": list(batch_data.keys()),
+                        "downloaded_stocks": all_downloaded,
                         "progress": f"{idx-1}/{len(all_tickers)} stocks downloaded"
                     }
-                    save_cache(partial_response, is_partial=True, stage="downloading", processed_tickers=list(batch_data.keys()))
+                    save_cache(partial_response, is_partial=True, stage="downloading", processed_tickers=all_downloaded)
                     raise Exception("TIMEOUT_CHECKPOINT: Checkpoint saved during download, will resume on next deployment")
                 
                 print(f"  Starting download {idx}/{len(all_tickers)}: {ticker}", flush=True)
