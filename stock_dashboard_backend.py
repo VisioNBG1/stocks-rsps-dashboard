@@ -2609,22 +2609,45 @@ def save_checkpoint_to_supabase(data):
 def load_checkpoint_from_supabase():
     """Load checkpoint data from Supabase database"""
     if not supabase_client:
+        print(f"  ⚠ Supabase client not initialized", flush=True)
         return None
     
     try:
+        print(f"  🔍 Querying Supabase for checkpoint 'main_checkpoint'...", flush=True)
         result = supabase_client.table("checkpoints").select("*").eq("id", "main_checkpoint").execute()
+        
+        print(f"  📊 Supabase query result: {len(result.data) if result.data else 0} records found", flush=True)
         
         if result.data and len(result.data) > 0:
             checkpoint_record = result.data[0]
-            # Parse JSON string back to dict
-            data = json.loads(checkpoint_record["data"])
-            print(f"  ✓ Checkpoint loaded from Supabase (stage: {checkpoint_record.get('stage', 'unknown')})")
-            return data
+            print(f"  📋 Checkpoint record found: stage={checkpoint_record.get('stage', 'unknown')}, is_partial={checkpoint_record.get('is_partial', False)}", flush=True)
+            
+            # Check if data is a string (JSON) or already a dict
+            data_value = checkpoint_record.get("data")
+            if isinstance(data_value, str):
+                # Parse JSON string back to dict
+                try:
+                    data = json.loads(data_value)
+                    print(f"  ✓ Checkpoint loaded from Supabase (stage: {checkpoint_record.get('stage', 'unknown')}, {len(data)} keys)", flush=True)
+                    return data
+                except json.JSONDecodeError as json_err:
+                    print(f"  ⚠ Failed to parse JSON from Supabase: {json_err}", flush=True)
+                    print(f"  📄 Data preview: {data_value[:200] if len(str(data_value)) > 200 else data_value}...", flush=True)
+                    return None
+            elif isinstance(data_value, dict):
+                # Already a dict (JSONB column)
+                print(f"  ✓ Checkpoint loaded from Supabase (stage: {checkpoint_record.get('stage', 'unknown')}, {len(data_value)} keys)", flush=True)
+                return data_value
+            else:
+                print(f"  ⚠ Unexpected data type in Supabase: {type(data_value)}", flush=True)
+                return None
         else:
-            print(f"  ℹ No checkpoint found in Supabase")
+            print(f"  ℹ No checkpoint found in Supabase (table may be empty or query returned no results)", flush=True)
             return None
     except Exception as e:
-        print(f"  ⚠ Failed to load checkpoint from Supabase: {e}")
+        print(f"  ⚠ Failed to load checkpoint from Supabase: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         return None
 
 def trigger_auto_redeploy(stage):
