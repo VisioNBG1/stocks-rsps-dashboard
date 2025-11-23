@@ -2580,12 +2580,21 @@ def save_checkpoint_to_supabase(data, checkpoint_id=None):
         
         # Prepare data for Supabase
         # Note: Supabase JSONB column can store JSON directly, but we'll use JSON string for compatibility
+        # Ensure downloading/stock_analysis/ratio_analysis stages are always marked as partial
+        checkpoint_stage = data.get("_stage", "unknown")
+        is_partial_flag = data.get("_partial", False)
+        incomplete_stages = ["downloading", "stock_analysis", "ratio_analysis"]
+        # Force partial flag if stage indicates incomplete work
+        if checkpoint_stage in incomplete_stages:
+            is_partial_flag = True
+            data["_partial"] = True  # Update data dict to ensure consistency
+        
         checkpoint_data = {
             "id": checkpoint_id,
             "data": json.dumps(data, default=str),  # Store as JSON string
             "updated_at": datetime.now().isoformat(),
-            "stage": data.get("_stage", "unknown"),
-            "is_partial": data.get("_partial", False)
+            "stage": checkpoint_stage,
+            "is_partial": is_partial_flag
         }
         
         # Try simple insert first (delete+insert is more reliable than upsert)
@@ -2689,6 +2698,12 @@ def load_checkpoint_from_supabase(checkpoint_id=None):
                 # Parse JSON string back to dict
                 try:
                     data = json.loads(data_value)
+                    # Ensure incomplete stages are marked as partial (safeguard)
+                    checkpoint_stage = checkpoint_record.get('stage', data.get('_stage', 'unknown'))
+                    incomplete_stages = ["downloading", "stock_analysis", "ratio_analysis"]
+                    if checkpoint_stage in incomplete_stages:
+                        data["_partial"] = True
+                        data["_stage"] = checkpoint_stage
                     print(f"  ✓ Checkpoint loaded from Supabase (stage: {checkpoint_record.get('stage', 'unknown')}, {len(data)} keys)", flush=True)
                     return data
                 except json.JSONDecodeError as json_err:
@@ -2697,8 +2712,15 @@ def load_checkpoint_from_supabase(checkpoint_id=None):
                     return None
             elif isinstance(data_value, dict):
                 # Already a dict (JSONB column)
-                print(f"  ✓ Checkpoint loaded from Supabase (stage: {checkpoint_record.get('stage', 'unknown')}, {len(data_value)} keys)", flush=True)
-                return data_value
+                data = data_value
+                # Ensure incomplete stages are marked as partial (safeguard)
+                checkpoint_stage = checkpoint_record.get('stage', data.get('_stage', 'unknown'))
+                incomplete_stages = ["downloading", "stock_analysis", "ratio_analysis"]
+                if checkpoint_stage in incomplete_stages:
+                    data["_partial"] = True
+                    data["_stage"] = checkpoint_stage
+                print(f"  ✓ Checkpoint loaded from Supabase (stage: {checkpoint_record.get('stage', 'unknown')}, {len(data)} keys)", flush=True)
+                return data
             else:
                 print(f"  ⚠ Unexpected data type in Supabase: {type(data_value)}", flush=True)
                 return None
@@ -3025,6 +3047,7 @@ def run_analysis_logic(force_refresh=False):
             
             # Load already downloaded stocks from cache files
             batch_data = {}
+            stocks_to_redownload = []  # Stocks that were marked as downloaded but cache is missing
             for ticker in downloaded_stocks:
                 ticker_data = get_cached_stock_data(ticker)
                 if ticker_data is not None and not ticker_data.empty:
@@ -3032,10 +3055,16 @@ def run_analysis_logic(force_refresh=False):
                     print(f"  ✓ Loaded cached data for {ticker} ({len(ticker_data)} rows)", flush=True)
                 else:
                     print(f"  ⚠ Cached data for {ticker} not found or empty, will re-download", flush=True)
+                    stocks_to_redownload.append(ticker)  # Add to re-download list
             
-            # Filter out already downloaded stocks
-            remaining_tickers = [t for t in all_tickers if t not in downloaded_stocks]
-            print(f"  📥 Remaining stocks to download: {len(remaining_tickers)}/{len(all_tickers)}", flush=True)
+            # Filter out already downloaded stocks that have valid cache files
+            # But include stocks that need to be re-downloaded (cache missing)
+            successfully_loaded_stocks = set(batch_data.keys())
+            remaining_tickers = [t for t in all_tickers if t not in successfully_loaded_stocks]
+            # Add stocks that need to be re-downloaded back to the list
+            remaining_tickers.extend(stocks_to_redownload)
+            remaining_tickers = list(set(remaining_tickers))  # Remove duplicates
+            print(f"  📥 Remaining stocks to download: {len(remaining_tickers)}/{len(all_tickers)} (including {len(stocks_to_redownload)} that need re-download)", flush=True)
             
             if not remaining_tickers:
                 print("  ✓ All stocks already downloaded, proceeding to analysis...", flush=True)
@@ -3148,7 +3177,7 @@ def run_analysis_logic(force_refresh=False):
                                     "progress": f"{idx}/{len(all_tickers)} stocks downloaded"
                                 }
                                 try:
-                                    save_cache(partial_response)
+                                    save_cache(partial_response, is_partial=True, stage="downloading", processed_tickers=all_downloaded)
                                 except:
                                     pass
                             break  # Success, move to next ticker
