@@ -3908,7 +3908,7 @@ def run_analysis_logic(force_refresh=False):
                             
                             # Get data from batch or download individually
                             if ticker in batch_data and not batch_data[ticker].empty:
-                                data = batch_data[ticker]
+                                data = batch_data[ticker].copy()
                             else:
                                 # Fallback: download individually with long delays
                                 print(f"    Data not in batch, downloading individually with 10s delay...")
@@ -3921,6 +3921,30 @@ def run_analysis_logic(force_refresh=False):
                             # Handle MultiIndex columns from yfinance
                             if isinstance(data.columns, pd.MultiIndex):
                                 data.columns = data.columns.droplevel(1)
+                            
+                            # Normalize column names to ensure they match expected format
+                            column_mapping = {}
+                            for col in data.columns:
+                                col_str = str(col)
+                                if col_str.lower() == 'open':
+                                    column_mapping[col] = 'Open'
+                                elif col_str.lower() == 'high':
+                                    column_mapping[col] = 'High'
+                                elif col_str.lower() == 'low':
+                                    column_mapping[col] = 'Low'
+                                elif col_str.lower() == 'close':
+                                    column_mapping[col] = 'Close'
+                                elif col_str.lower() == 'volume':
+                                    column_mapping[col] = 'Volume'
+                            
+                            if column_mapping:
+                                data = data.rename(columns=column_mapping)
+                            
+                            # Verify required columns exist before analysis
+                            required_cols = ['Open', 'High', 'Low', 'Close']
+                            if not all(col in data.columns for col in required_cols):
+                                print(f"  ⚠ {ticker}: Missing required columns. Available: {list(data.columns)}. Skipping.", flush=True)
+                                break  # Skip this ticker
                             
                             # Use concurrent.futures to add timeout to analyze_stock
                             from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
