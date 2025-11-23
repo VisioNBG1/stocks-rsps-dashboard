@@ -3053,6 +3053,51 @@ def get_downloaded_stocks_from_supabase(date_str=None):
         traceback.print_exc()
         return []
 
+def get_z_scored_stocks_from_supabase(date_str=None):
+    """Get list of all stocks that have been z-scored (stored in Supabase)"""
+    if not supabase_client:
+        return []
+    
+    try:
+        if date_str is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        # Get all z-scored stocks for today's date
+        result = supabase_client.table("stock_data").select("ticker").eq("stage", "z_scored").eq("date_str", date_str).execute()
+        
+        if result.data:
+            tickers = list(set([record.get("ticker") for record in result.data if record.get("ticker")]))
+            print(f"  📊 Found {len(tickers)} z-scored stocks in Supabase for {date_str}", flush=True)
+            return tickers
+        else:
+            print(f"  ℹ No z-scored stocks found in Supabase for {date_str}", flush=True)
+            return []
+    except Exception as e:
+        print(f"  ⚠ Error getting z-scored stocks from Supabase: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return []
+
+def load_z_score_from_supabase(ticker, date_str=None):
+    """Load z-score data for a specific stock from Supabase"""
+    if not supabase_client:
+        return None
+    
+    try:
+        if date_str is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        result = supabase_client.table("stock_data").select("*").eq("ticker", ticker).eq("stage", "z_scored").eq("date_str", date_str).execute()
+        
+        if result.data and len(result.data) > 0:
+            record = result.data[0]
+            return record.get("data", {})
+        else:
+            return None
+    except Exception as e:
+        print(f"  ⚠ Error loading z-score for {ticker} from Supabase: {e}", flush=True)
+        return None
+
 def clear_supabase_checkpoints():
     """Clear all checkpoints from Supabase (use with caution!)"""
     if not supabase_client:
