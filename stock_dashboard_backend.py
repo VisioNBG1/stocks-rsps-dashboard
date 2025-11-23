@@ -3847,7 +3847,8 @@ def start_background_analysis():
             if cached_data.get("_partial", False):
                 print(f"✓ Partial checkpoint found - will resume from stage: {cached_data.get('_stage', 'unknown')}", flush=True)
                 print("="*60 + "\n", flush=True)
-                # Don't set status to complete - let it resume
+                # Don't return - continue to start analysis which will resume from checkpoint
+                print("🚀 Resuming analysis from checkpoint...", flush=True)
             else:
                 print("✓ Cache found - analysis already completed", flush=True)
                 print("="*60 + "\n", flush=True)
@@ -3855,7 +3856,7 @@ def start_background_analysis():
                 analysis_progress["status"] = "complete"
                 analysis_progress["results"] = cached_data
                 analysis_progress["message"] = "Loaded from cache"
-            return
+                return  # Only return if complete - partial checkpoints should continue
         
         # No cache - start analysis automatically
         print("\n" + "="*60, flush=True)
