@@ -3881,6 +3881,40 @@ def run_analysis_logic(force_refresh=False):
                         })
                         processed_tickers_from_checkpoint.append(ticker)
                 print(f"  ✓ Loaded {len(results)} already processed stocks from checkpoint", flush=True)
+                
+                # Also check Supabase for z-scored stocks that might not be in checkpoint
+                try:
+                    date_str = datetime.now().strftime("%Y-%m-%d")
+                    supabase_z_scored = get_z_scored_stocks_from_supabase(date_str)
+                    checkpoint_tickers_set = set(processed_tickers_from_checkpoint)
+                    supabase_tickers_set = set(supabase_z_scored)
+                    
+                    # Find stocks in Supabase but not in checkpoint
+                    missing_from_checkpoint = supabase_tickers_set - checkpoint_tickers_set
+                    if missing_from_checkpoint:
+                        print(f"  ℹ Found {len(missing_from_checkpoint)} z-scored stocks in Supabase not in checkpoint, loading them...", flush=True)
+                        for ticker in missing_from_checkpoint:
+                            z_data = load_z_score_from_supabase(ticker, date_str)
+                            if z_data:
+                                # Find sector for this ticker
+                                sector_name = None
+                                for sec_name, sec_tickers in SECTORS.items():
+                                    if ticker in sec_tickers:
+                                        sector_name = sec_name
+                                        break
+                                
+                                if sector_name:
+                                    results.append({
+                                        "sector": sector_name,
+                                        "ticker": ticker,
+                                        "z_avg": z_data.get("z_avg", 0.0),
+                                        "avg_score": z_data.get("avg_score", 0.0)
+                                    })
+                                    processed_tickers_from_checkpoint.append(ticker)
+                                    print(f"  ✓ Loaded {ticker} z-scores from Supabase", flush=True)
+                except Exception as supabase_error:
+                    print(f"  ⚠ Could not load z-scores from Supabase: {supabase_error}", flush=True)
+                
                 print(f"  📋 Already processed: {', '.join(sorted(processed_tickers_from_checkpoint)[:10])}{'...' if len(processed_tickers_from_checkpoint) > 10 else ''}", flush=True)
             elif not was_resuming_from_downloading:
                 # Check if we have a partial checkpoint with processed_tickers
