@@ -4141,6 +4141,21 @@ def run_analysis_logic(force_refresh=False):
                                 print(f"  ✓ {ticker}: z_avg = {z_avg:.3f}, avg_score = {avg_score:.3f} (completed in {elapsed_total:.1f}s)", flush=True)
                                 sys.stdout.flush()
                                 
+                                # Save z-score results to Supabase for this stock
+                                try:
+                                    date_str = datetime.now().strftime("%Y-%m-%d")
+                                    z_score_data = {
+                                        "z_avg": z_avg,
+                                        "avg_score": avg_score,
+                                        "sector": sector,
+                                        "ticker": ticker,
+                                        "analysis_result": result  # Store full analysis result
+                                    }
+                                    save_stock_data_to_supabase(ticker, "z_scored", z_score_data, date_str)
+                                    print(f"  💾 Saved {ticker} z-scores to Supabase", flush=True)
+                                except Exception as save_error:
+                                    print(f"  ⚠ Could not save {ticker} z-scores to Supabase: {save_error}", flush=True)
+                                
                                 # Periodically save checkpoint during processing (every 10 tickers)
                                 if len(processed_tickers) % 10 == 0:
                                     elapsed = time.time() - start_time  # Use main start_time
@@ -4513,6 +4528,20 @@ def run_analysis_logic(force_refresh=False):
                         ratio_scores[ticker1] = avg_ratio_score
                         print(f"  {ticker1}: {avg_ratio_score:.3f} (from {len(sorted_ratio_scores)} comparisons)", flush=True)
                         sys.stdout.flush()
+                        
+                        # Save ratio analysis results to Supabase for this stock
+                        try:
+                            date_str = datetime.now().strftime("%Y-%m-%d")
+                            ratio_data = {
+                                "ticker": ticker1,
+                                "ratio_score": avg_ratio_score,
+                                "num_comparisons": len(sorted_ratio_scores),
+                                "ratio_z_scores": sorted_ratio_scores
+                            }
+                            save_stock_data_to_supabase(ticker1, "ratio_analyzed", ratio_data, date_str)
+                            print(f"  💾 Saved {ticker1} ratio analysis to Supabase", flush=True)
+                        except Exception as save_error:
+                            print(f"  ⚠ Could not save {ticker1} ratio analysis to Supabase: {save_error}", flush=True)
                     else:
                         # If no successful comparisons, set score to negative infinity (will be sorted last)
                         ratio_scores[ticker1] = float('-inf')
@@ -4571,8 +4600,23 @@ def run_analysis_logic(force_refresh=False):
             
                 ratio_analysis = {
                     "top_stocks": [{"ticker": ticker, "ratio_score": score} for ticker, score in top_ratio_stocks[:10]],
-                    "current_best": top_ratio_stocks[0][0] if top_ratio_stocks else "N/A"
+                    "current_best": top_ratio_stocks[0][0] if top_ratio_stocks else "N/A",
+                    "all_ratio_scores": ratio_scores  # Store all ratio scores for reference
                 }
+                
+                # Save ratio analysis summary to Supabase
+                try:
+                    date_str = datetime.now().strftime("%Y-%m-%d")
+                    ratio_summary = {
+                        "ratio_analysis": ratio_analysis,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "total_stocks": len(ratio_scores)
+                    }
+                    # Save as a special record with ticker="RATIO_ANALYSIS_SUMMARY"
+                    save_stock_data_to_supabase("RATIO_ANALYSIS_SUMMARY", "ratio_analysis", ratio_summary, date_str)
+                    print(f"  💾 Saved ratio analysis summary to Supabase", flush=True)
+                except Exception as save_error:
+                    print(f"  ⚠ Could not save ratio analysis summary to Supabase: {save_error}", flush=True)
                 
                 # Save partial results after ratio analysis (checkpoint)
                 partial_response = {
