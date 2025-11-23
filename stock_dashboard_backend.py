@@ -2578,34 +2578,47 @@ def save_checkpoint_to_supabase(data):
             "is_partial": data.get("_partial", False)
         }
         
-        # Upsert (insert or update) the checkpoint
-        # Use insert with on_conflict for upsert behavior
+        # Try simple insert first (delete+insert is more reliable than upsert)
+        print(f"  💾 Attempting to save checkpoint to Supabase...", flush=True)
+        print(f"     - ID: {checkpoint_data['id']}", flush=True)
+        print(f"     - Stage: {checkpoint_data['stage']}", flush=True)
+        print(f"     - Data size: {len(checkpoint_data['data'])} bytes", flush=True)
+        
+        # Delete existing record first (if any) to avoid conflicts
         try:
-            result = supabase_client.table("checkpoints").upsert(
-                checkpoint_data,
-                on_conflict="id"
-            ).execute()
-            print(f"  ✓ Checkpoint upserted to Supabase (result: {len(result.data) if result.data else 0} records)", flush=True)
-        except Exception as upsert_error:
-            print(f"  ⚠ Upsert failed: {upsert_error}, trying fallback...", flush=True)
-            # Fallback: try insert, then update if exists
-            try:
-                insert_result = supabase_client.table("checkpoints").insert(checkpoint_data).execute()
-                print(f"  ✓ Checkpoint inserted to Supabase (result: {len(insert_result.data) if insert_result.data else 0} records)", flush=True)
-            except Exception as insert_error:
-                print(f"  ⚠ Insert failed: {insert_error}, trying update...", flush=True)
-                # Update if insert fails (record exists)
-                try:
-                    update_result = supabase_client.table("checkpoints").update({
-                        "data": checkpoint_data["data"],
-                        "updated_at": checkpoint_data["updated_at"],
-                        "stage": checkpoint_data["stage"],
-                        "is_partial": checkpoint_data["is_partial"]
-                    }).eq("id", "main_checkpoint").execute()
-                    print(f"  ✓ Checkpoint updated in Supabase (result: {len(update_result.data) if update_result.data else 0} records)", flush=True)
-                except Exception as update_error:
-                    print(f"  ⚠ Update also failed: {update_error}", flush=True)
-                    raise update_error
+            delete_result = supabase_client.table("checkpoints").delete().eq("id", "main_checkpoint").execute()
+            print(f"  🗑️  Deleted existing checkpoint (if any)", flush=True)
+        except Exception as delete_error:
+            # Ignore delete errors (record might not exist)
+            print(f"  ℹ No existing checkpoint to delete (or delete failed: {delete_error})", flush=True)
+        
+        # Insert new record
+        try:
+            result = supabase_client.table("checkpoints").insert(checkpoint_data).execute()
+            
+            if result.data and len(result.data) > 0:
+                print(f"  ✓ Checkpoint inserted to Supabase successfully ({len(result.data)} record)", flush=True)
+            else:
+                print(f"  ⚠ Insert returned no data - trying update instead...", flush=True)
+                # If insert didn't return data, try update
+                update_result = supabase_client.table("checkpoints").update({
+                    "data": checkpoint_data["data"],
+                    "updated_at": checkpoint_data["updated_at"],
+                    "stage": checkpoint_data["stage"],
+                    "is_partial": checkpoint_data["is_partial"]
+                }).eq("id", "main_checkpoint").execute()
+                if update_result.data and len(update_result.data) > 0:
+                    print(f"  ✓ Checkpoint updated in Supabase successfully ({len(update_result.data)} record)", flush=True)
+                else:
+                    raise Exception("Both insert and update returned no data - check RLS policies")
+        except Exception as save_error:
+            print(f"  ❌ Save operation failed: {save_error}", flush=True)
+            print(f"  📋 Error type: {type(save_error).__name__}", flush=True)
+            print(f"  💡 This might be due to Row Level Security (RLS) blocking writes", flush=True)
+            print(f"  💡 Check Supabase: Authentication → Policies → checkpoints table", flush=True)
+            import traceback
+            traceback.print_exc()
+            raise save_error
         
         # Verify the save by reading it back
         try:
