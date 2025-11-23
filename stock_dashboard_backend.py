@@ -3230,14 +3230,23 @@ def run_analysis_logic(force_refresh=False):
             print("  ⏭ Skipping download (resuming from checkpoint)...", flush=True)
             batch_data = {}  # Empty batch_data since we're skipping download
         elif resume_from_stage == "downloading":
-            # Resume from downloading stage - get downloaded stocks from Supabase (primary) and checkpoint (fallback)
+            # Resume from downloading stage - get downloaded stocks from checkpoint (primary) and Supabase (verification)
             date_str = datetime.now().strftime("%Y-%m-%d")
-            downloaded_stocks = get_downloaded_stocks_from_supabase(date_str)
             
-            # Fallback to checkpoint if Supabase is empty
-            if not downloaded_stocks:
-                cached_data = load_cache()
-                downloaded_stocks = cached_data.get("downloaded_stocks", []) if cached_data else []
+            # Load from checkpoint first (this is the source of truth)
+            cached_data = load_cache()
+            downloaded_stocks = cached_data.get("downloaded_stocks", []) if cached_data else []
+            
+            # Also check Supabase to see what's actually stored there
+            supabase_stocks = get_downloaded_stocks_from_supabase(date_str)
+            
+            # Use checkpoint as primary source, but log discrepancy if any
+            if downloaded_stocks and supabase_stocks:
+                checkpoint_set = set(downloaded_stocks)
+                supabase_set = set(supabase_stocks)
+                missing_in_supabase = checkpoint_set - supabase_set
+                if missing_in_supabase:
+                    print(f"  ⚠ {len(missing_in_supabase)} stocks in checkpoint but not in Supabase (will re-download)", flush=True)
             
             # Ensure downloaded_stocks is a list and remove duplicates
             if not isinstance(downloaded_stocks, list):
@@ -3252,33 +3261,49 @@ def run_analysis_logic(force_refresh=False):
             date_str = datetime.now().strftime("%Y-%m-%d")
             
             for ticker in downloaded_stocks:
-                # Try Supabase first (persistent storage)
-                ticker_data = load_stock_data_from_supabase(ticker, "downloaded", date_str)
-                if ticker_data is not None:
-                    if isinstance(ticker_data, pd.DataFrame) and not ticker_data.empty:
-                        batch_data[ticker] = ticker_data
-                        print(f"  ✓ Loaded {ticker} from Supabase ({len(ticker_data)} rows)", flush=True)
-                        continue
-                    elif isinstance(ticker_data, dict):
-                        # Convert dict back to DataFrame if needed
-                        try:
-                            df = pd.DataFrame(ticker_data)
-                            if not df.empty:
-                                batch_data[ticker] = df
-                                print(f"  ✓ Loaded {ticker} from Supabase ({len(df)} rows)", flush=True)
-                                continue
-                        except:
-                            pass
+                loaded = False
                 
-                # Fallback to local cache
-                ticker_data = get_cached_stock_data(ticker)
-                if ticker_data is not None and not ticker_data.empty:
-                    batch_data[ticker] = ticker_data
-                    print(f"  ✓ Loaded cached data for {ticker} ({len(ticker_data)} rows)", flush=True)
-                    # Also save to Supabase for future use
-                    save_stock_data_to_supabase(ticker, "downloaded", ticker_data, date_str)
-                else:
-                    print(f"  ⚠ Data for {ticker} not found in Supabase or cache, will re-download", flush=True)
+                # Try Supabase first (persistent storage)
+                try:
+                    ticker_data = load_stock_data_from_supabase(ticker, "downloaded", date_str)
+                    if ticker_data is not None:
+                        if isinstance(ticker_data, pd.DataFrame) and not ticker_data.empty:
+                            # Validate DataFrame has expected structure
+                            if len(ticker_data.columns) >= 4:  # Should have Open, High, Low, Close at minimum
+                                batch_data[ticker] = ticker_data
+                                print(f"  ✓ Loaded {ticker} from Supabase ({len(ticker_data)} rows, {len(ticker_data.columns)} cols)", flush=True)
+                                loaded = True
+                            else:
+                                print(f"  ⚠ {ticker} from Supabase has invalid structure ({len(ticker_data.columns)} cols), will re-download", flush=True)
+                        elif isinstance(ticker_data, dict):
+                            # Try to convert dict to DataFrame
+                            try:
+                                df = pd.DataFrame(ticker_data)
+                                if not df.empty and len(df.columns) >= 4:
+                                    batch_data[ticker] = df
+                                    print(f"  ✓ Loaded {ticker} from Supabase (dict->DataFrame, {len(df)} rows)", flush=True)
+                                    loaded = True
+                            except Exception as dict_error:
+                                print(f"  ⚠ Could not convert {ticker} dict to DataFrame: {dict_error}", flush=True)
+                except Exception as supabase_error:
+                    # If Supabase load fails, try local cache
+                    print(f"  ⚠ Supabase load failed for {ticker}: {supabase_error}", flush=True)
+                
+                if not loaded:
+                    # Fallback to local cache
+                    ticker_data = get_cached_stock_data(ticker)
+                    if ticker_data is not None and not ticker_data.empty:
+                        batch_data[ticker] = ticker_data
+                        print(f"  ✓ Loaded cached data for {ticker} ({len(ticker_data)} rows)", flush=True)
+                        # Also save to Supabase for future use (with correct structure)
+                        try:
+                            save_stock_data_to_supabase(ticker, "downloaded", ticker_data, date_str)
+                        except Exception as save_error:
+                            print(f"  ⚠ Could not save {ticker} to Supabase: {save_error}", flush=True)
+                        loaded = True
+                
+                if not loaded:
+                    print(f"  ⚠ Data for {ticker} not found or invalid, will re-download", flush=True)
                     stocks_to_redownload.append(ticker)  # Add to re-download list
             
             # IMPORTANT: Filter out stocks that are in the checkpoint's downloaded_stocks list
