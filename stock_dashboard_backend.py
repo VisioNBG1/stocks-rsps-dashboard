@@ -3155,6 +3155,30 @@ def run_analysis_logic(force_refresh=False):
                         else:
                             print(f"    ✗ {ticker} returned empty data", flush=True)
                             if retry < max_retries - 1:
+                                # Check timeout before waiting
+                                current_downloaded = list(set(list(batch_data.keys())))
+                                try:
+                                    existing_checkpoint = load_cache()
+                                    if existing_checkpoint and existing_checkpoint.get("downloaded_stocks"):
+                                        existing_downloaded = existing_checkpoint.get("downloaded_stocks", [])
+                                        if not isinstance(existing_downloaded, list):
+                                            existing_downloaded = []
+                                        all_downloaded = list(set(current_downloaded + existing_downloaded))
+                                    else:
+                                        all_downloaded = current_downloaded
+                                except:
+                                    all_downloaded = current_downloaded
+                                
+                                if check_timeout_and_save_checkpoint("downloading", {"downloaded_stocks": all_downloaded}, all_downloaded):
+                                    partial_response = {
+                                        "_partial": True,
+                                        "_stage": "downloading",
+                                        "downloaded_stocks": all_downloaded,
+                                        "progress": f"{idx-1}/{len(all_tickers)} stocks downloaded"
+                                    }
+                                    save_cache(partial_response, is_partial=True, stage="downloading", processed_tickers=all_downloaded)
+                                    raise Exception("TIMEOUT_CHECKPOINT: Checkpoint saved during download, will resume on next deployment")
+                                
                                 print(f"    Retrying in 10s...", flush=True)
                                 time.sleep(10)
                             continue
@@ -3163,6 +3187,30 @@ def run_analysis_logic(force_refresh=False):
                         error_msg = str(e)
                         if "Rate limited" in error_msg or "Too Many Requests" in error_msg or "429" in error_msg or "YFRateLimitError" in error_msg:
                             if retry < max_retries - 1:
+                                # Check timeout before waiting
+                                current_downloaded = list(set(list(batch_data.keys())))
+                                try:
+                                    existing_checkpoint = load_cache()
+                                    if existing_checkpoint and existing_checkpoint.get("downloaded_stocks"):
+                                        existing_downloaded = existing_checkpoint.get("downloaded_stocks", [])
+                                        if not isinstance(existing_downloaded, list):
+                                            existing_downloaded = []
+                                        all_downloaded = list(set(current_downloaded + existing_downloaded))
+                                    else:
+                                        all_downloaded = current_downloaded
+                                except:
+                                    all_downloaded = current_downloaded
+                                
+                                if check_timeout_and_save_checkpoint("downloading", {"downloaded_stocks": all_downloaded}, all_downloaded):
+                                    partial_response = {
+                                        "_partial": True,
+                                        "_stage": "downloading",
+                                        "downloaded_stocks": all_downloaded,
+                                        "progress": f"{idx-1}/{len(all_tickers)} stocks downloaded"
+                                    }
+                                    save_cache(partial_response, is_partial=True, stage="downloading", processed_tickers=all_downloaded)
+                                    raise Exception("TIMEOUT_CHECKPOINT: Checkpoint saved during download, will resume on next deployment")
+                                
                                 wait_time = rate_limit_wait * (retry + 1)  # 60s, 120s, 180s
                                 print(f"    ✗ {ticker} rate limited, waiting {wait_time}s before retry...", flush=True)
                                 time.sleep(wait_time)
@@ -3334,7 +3382,7 @@ def run_analysis_logic(force_refresh=False):
                     max_retries = 3
                     timeout_seconds = 300  # 5 minutes per stock analysis
                     result = None
-                    start_time = time.time()
+                    stock_start_time = time.time()  # Use different name to avoid shadowing main start_time
                     
                     for attempt in range(1, max_retries + 1):
                         try:
@@ -3344,6 +3392,28 @@ def run_analysis_logic(force_refresh=False):
                             else:
                                 print(f"  Analyzing {ticker}...", flush=True)
                                 sys.stdout.flush()
+                            
+                            # Check timeout before starting analysis
+                            if check_timeout_and_save_checkpoint("stock_analysis", {"sectors": []}, processed_tickers):
+                                # Prepare partial response
+                                partial_response = {
+                                    "sectors": [],
+                                    "message": f"Checkpoint saved before {ticker} analysis. Processed {len(processed_tickers)} tickers.",
+                                    "checkpoint": True
+                                }
+                                sector_map = {}
+                                for r in results:
+                                    sec = r["sector"]
+                                    if sec not in sector_map:
+                                        sector_map[sec] = {"name": sec, "stocks": []}
+                                    sector_map[sec]["stocks"].append({
+                                        "ticker": r["ticker"],
+                                        "z": r["z_avg"],
+                                        "avg_score": r["avg_score"]
+                                    })
+                                partial_response["sectors"] = list(sector_map.values())
+                                save_cache(partial_response, is_partial=True, stage="stock_analysis", processed_tickers=processed_tickers)
+                                raise Exception("TIMEOUT_CHECKPOINT: Checkpoint saved, will resume on next deployment")
                             
                             # Get data from batch or download individually
                             if ticker in batch_data and not batch_data[ticker].empty:
@@ -3372,15 +3442,18 @@ def run_analysis_logic(force_refresh=False):
                                 progress_stop = threading.Event()
                                 
                                 def progress_monitor():
-                                    start_time_monitor = time.time()
+                                    stock_elapsed_start = time.time()
                                     while not progress_stop.is_set():
-                                        time.sleep(15)  # Check every 15 seconds
+                                        time.sleep(5)  # Check every 5 seconds (very frequent for timeout detection)
                                         if not progress_stop.is_set():
-                                            elapsed = int(time.time() - start_time_monitor)
-                                            if elapsed < timeout_seconds:
-                                                print(f"      ... {ticker} still analyzing ({elapsed}s elapsed)...", flush=True)
-                                                sys.stdout.flush()
-                                                # Check for timeout checkpoint during long analysis
+                                            stock_elapsed = int(time.time() - stock_elapsed_start)
+                                            # Check render timeout using main start_time (from closure)
+                                            main_elapsed = time.time() - start_time
+                                            if stock_elapsed < timeout_seconds:
+                                                if stock_elapsed % 15 == 0:  # Only print every 15 seconds to reduce log spam
+                                                    print(f"      ... {ticker} still analyzing ({stock_elapsed}s elapsed, {main_elapsed:.0f}s total)...", flush=True)
+                                                    sys.stdout.flush()
+                                                # Check for timeout checkpoint during long analysis (check every 5 seconds)
                                                 if check_timeout_and_save_checkpoint("stock_analysis", {"sectors": []}, processed_tickers):
                                                     progress_stop.set()
                                                     # Prepare partial response
@@ -3413,7 +3486,7 @@ def run_analysis_logic(force_refresh=False):
                                     progress_stop.set()  # Stop progress monitor
                                 except FutureTimeoutError:
                                     progress_stop.set()  # Stop progress monitor
-                                    elapsed_total = time.time() - start_time
+                                    elapsed_total = time.time() - stock_start_time
                                     print(f"  ⚠ {ticker} analysis timed out after {timeout_seconds}s (attempt {attempt}/{max_retries}, total elapsed: {elapsed_total:.1f}s)", flush=True)
                                     sys.stdout.flush()
                                     future.cancel()
@@ -3422,7 +3495,7 @@ def run_analysis_logic(force_refresh=False):
                                         print(f"    Waiting 10s before retry...", flush=True)
                                         sys.stdout.flush()
                                         time.sleep(10)
-                                        start_time = time.time()  # Reset timer for retry
+                                        stock_start_time = time.time()  # Reset timer for retry
                                         continue
                                     else:
                                         print(f"  ✗ {ticker}: Failed after {max_retries} attempts (timeout)", flush=True)
@@ -3440,13 +3513,13 @@ def run_analysis_logic(force_refresh=False):
                                     "avg_score": avg_score
                                 })
                                 processed_tickers.append(ticker)  # Track processed ticker
-                                elapsed_total = time.time() - start_time
+                                elapsed_total = time.time() - stock_start_time
                                 print(f"  ✓ {ticker}: z_avg = {z_avg:.3f}, avg_score = {avg_score:.3f} (completed in {elapsed_total:.1f}s)", flush=True)
                                 sys.stdout.flush()
                                 
                                 # Periodically save checkpoint during processing (every 10 tickers)
                                 if len(processed_tickers) % 10 == 0:
-                                    elapsed = time.time() - start_time
+                                    elapsed = time.time() - start_time  # Use main start_time
                                     if elapsed > 600:  # After 10 minutes, save checkpoint every 10 tickers
                                         print(f"  💾 Saving intermediate checkpoint ({len(processed_tickers)} tickers processed)...", flush=True)
                                         partial_response = {
@@ -3636,11 +3709,23 @@ def run_analysis_logic(force_refresh=False):
                         if comparisons_made >= comparison_limit:
                             break
                         
+                        # Check timeout before each ratio comparison
+                        if check_timeout_and_save_checkpoint("ratio_analysis", {"sectors": output_sectors}, []):
+                            partial_response = {
+                                "sectors": output_sectors,
+                                "ratio_analysis": {"top_stocks": [], "current_best": "N/A"},
+                                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "_partial": True,
+                                "_stage": "ratio_analysis"
+                            }
+                            save_cache(partial_response, is_partial=True, stage="ratio_analysis", processed_tickers=[])
+                            raise Exception("TIMEOUT_CHECKPOINT: Checkpoint saved during ratio analysis, will resume on next deployment")
+                        
                         # Calculate ratio avg_score (ticker1/ticker2) with retry logic and aggressive timeout
                         max_retries = 3
                         timeout_seconds = 60  # 60 seconds per ratio comparison (normal takes 15-30s)
                         ratio_score = None
-                        start_time = time.time()
+                        ratio_start_time = time.time()  # Use different name to avoid shadowing
                         
                         for attempt in range(1, max_retries + 1):
                             try:
@@ -3662,14 +3747,29 @@ def run_analysis_logic(force_refresh=False):
                                     progress_stop = threading.Event()
                                     
                                     def progress_monitor():
-                                        start_time_monitor = time.time()
+                                        ratio_elapsed_start = time.time()
                                         while not progress_stop.is_set():
-                                            time.sleep(15)  # Check every 15 seconds
+                                            time.sleep(5)  # Check every 5 seconds (very frequent for timeout detection)
                                             if not progress_stop.is_set():
-                                                elapsed = int(time.time() - start_time_monitor)
-                                                if elapsed < timeout_seconds:
-                                                    print(f"      ... {ticker1}/{ticker2} still calculating ({elapsed}s elapsed)...", flush=True)
-                                                    sys.stdout.flush()
+                                                ratio_elapsed = int(time.time() - ratio_elapsed_start)
+                                                # Check render timeout using main start_time (from closure)
+                                                main_elapsed = time.time() - start_time
+                                                if ratio_elapsed < timeout_seconds:
+                                                    if ratio_elapsed % 15 == 0:  # Only print every 15 seconds to reduce log spam
+                                                        print(f"      ... {ticker1}/{ticker2} still calculating ({ratio_elapsed}s elapsed, {main_elapsed:.0f}s total)...", flush=True)
+                                                        sys.stdout.flush()
+                                                    # Check for timeout checkpoint during long ratio calculation (check every 5 seconds)
+                                                    if check_timeout_and_save_checkpoint("ratio_analysis", {"sectors": output_sectors}, []):
+                                                        progress_stop.set()
+                                                        partial_response = {
+                                                            "sectors": output_sectors,
+                                                            "ratio_analysis": {"top_stocks": [], "current_best": "N/A"},
+                                                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                                            "_partial": True,
+                                                            "_stage": "ratio_analysis"
+                                                        }
+                                                        save_cache(partial_response, is_partial=True, stage="ratio_analysis", processed_tickers=[])
+                                                        raise Exception("TIMEOUT_CHECKPOINT: Checkpoint saved during ratio calculation, will resume on next deployment")
                                                 else:
                                                     break
                                     
@@ -3681,7 +3781,7 @@ def run_analysis_logic(force_refresh=False):
                                         progress_stop.set()  # Stop progress monitor
                                     except FutureTimeoutError:
                                         progress_stop.set()  # Stop progress monitor
-                                        elapsed_total = time.time() - start_time
+                                        elapsed_total = time.time() - ratio_start_time
                                         print(f"      ⚠ {ticker1}/{ticker2} timed out after {timeout_seconds}s (attempt {attempt}/{max_retries}, total elapsed: {elapsed_total:.1f}s)", flush=True)
                                         sys.stdout.flush()
                                         future.cancel()
@@ -3690,7 +3790,7 @@ def run_analysis_logic(force_refresh=False):
                                             print(f"        Waiting 5s before retry...", flush=True)
                                             sys.stdout.flush()
                                             time.sleep(5)
-                                            start_time = time.time()  # Reset timer for retry
+                                            ratio_start_time = time.time()  # Reset timer for retry
                                             continue
                                         else:
                                             print(f"      ✗ {ticker1}/{ticker2}: Failed after {max_retries} attempts (timeout), skipping...", flush=True)
@@ -3699,7 +3799,7 @@ def run_analysis_logic(force_refresh=False):
                                     
                                     # If we got a result, break out of retry loop
                                     if ratio_score is not None:
-                                        elapsed_total = time.time() - start_time
+                                        elapsed_total = time.time() - ratio_start_time
                                         ratio_z_scores.append(ratio_score)
                                         print(f"      ✓ {ticker1}/{ticker2}: {ratio_score:.3f} (completed in {elapsed_total:.1f}s)", flush=True)
                                         sys.stdout.flush()
@@ -3709,7 +3809,7 @@ def run_analysis_logic(force_refresh=False):
                                             print(f"      ⚠ {ticker1}/{ticker2} returned None (attempt {attempt}/{max_retries}), retrying...", flush=True)
                                             sys.stdout.flush()
                                             time.sleep(3)
-                                            start_time = time.time()  # Reset timer for retry
+                                            ratio_start_time = time.time()  # Reset timer for retry
                                             continue
                                         else:
                                             print(f"      ✗ {ticker1}/{ticker2}: Failed to calculate ratio after {max_retries} attempts, skipping...", flush=True)
@@ -3718,7 +3818,7 @@ def run_analysis_logic(force_refresh=False):
                                     
                             except Exception as e:
                                 error_msg = str(e)
-                                elapsed_total = time.time() - start_time
+                                elapsed_total = time.time() - ratio_start_time
                                 print(f"      ⚠ Error calculating ratio for {ticker1}/{ticker2} (attempt {attempt}/{max_retries}, elapsed: {elapsed_total:.1f}s): {error_msg}", flush=True)
                                 sys.stdout.flush()
                                 
