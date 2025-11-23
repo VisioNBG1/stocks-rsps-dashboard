@@ -400,14 +400,14 @@ SECTORS = {
     "Health Care": [
         "JNJ", "PFE", "LLY", "UNH", "ABBV", "TMO", "ABT", "DHR", "BMY", "AMGN",
         "GILD", "CI", "HUM", "CVS", "ELV", "CNC", "MOH", "MRNA", "BIIB", "REGN",
-        "VRTX", "ALNY", "IONS", "FOLD", "ARWR", "SGMO", "BEAM", "CRISPR", "NTLA", "EDIT",
+        "VRTX", "ALNY", "IONS", "FOLD", "ARWR", "SGMO", "BEAM", "NTLA", "EDIT",
         "ZTS", "IDXX", "ALGN", "ISRG", "SYK", "BAX", "EW", "BSX", "ZBH", "HOLX"
     ],
     "Industrials": [
         "BA", "CAT", "DE", "HON", "GE", "RTX", "LMT", "NOC", "GD", "TDG",
         "ETN", "EMR", "ITW", "PH", "AME", "DOV", "FTV", "GGG", "PNR", "ROK",
         "CMI", "PCAR", "WAB", "KNX", "JBHT", "ODFL", "XPO", "CHRW", "EXPD", "FDX",
-        "UPS", "AAL", "DAL", "LUV", "UAL", "JBLU", "SAVE", "ALK", "HA", "SKYW"
+        "UPS", "AAL", "DAL", "LUV", "UAL", "JBLU", "ALK", "SKYW"
     ],
     "Utilities": [
         "NEE", "SO", "DUK", "AEP", "SRE", "EXC", "XEL", "ES", "EIX", "PEG",
@@ -432,7 +432,7 @@ SECTORS = {
     "Real Estate": [
         "AMT", "PLD", "EQIX", "PSA", "WELL", "VICI", "SPG", "O", "DLR", "EXPI",
         "CBRE", "JLL", "CWK", "REXR", "STAG", "FR", "BRX", "BXP", "KIM", "REG",
-        "MAC", "SLG", "VTR", "PEAK", "CTRE", "DOC", "MPW", "OHI", "GMRE"
+        "MAC", "SLG", "VTR", "CTRE", "DOC", "MPW", "OHI", "GMRE"
     ],
     "Materials": [
         "LIN", "APD", "ECL", "SHW", "PPG", "DD", "DOW", "FCX", "NEM", "VALE",
@@ -2922,6 +2922,34 @@ def load_stock_data_from_supabase(ticker, stage, date_str=None):
                     # Final validation
                     if len(df.columns) != num_columns:
                         print(f"  ⚠ DataFrame column count mismatch for {ticker}: expected {num_columns}, got {len(df.columns)}", flush=True)
+                        return None
+                    
+                    # Normalize column names to ensure they match expected format (capitalize first letter)
+                    # yfinance typically returns: Open, High, Low, Close, Volume
+                    column_mapping = {}
+                    for col in df.columns:
+                        col_str = str(col)
+                        # Try to match common column name variations
+                        if col_str.lower() == 'open':
+                            column_mapping[col] = 'Open'
+                        elif col_str.lower() == 'high':
+                            column_mapping[col] = 'High'
+                        elif col_str.lower() == 'low':
+                            column_mapping[col] = 'Low'
+                        elif col_str.lower() == 'close':
+                            column_mapping[col] = 'Close'
+                        elif col_str.lower() == 'volume':
+                            column_mapping[col] = 'Volume'
+                    
+                    if column_mapping:
+                        df = df.rename(columns=column_mapping)
+                        print(f"  ℹ Normalized column names for {ticker}: {column_mapping}", flush=True)
+                    
+                    # Verify required columns exist
+                    required_cols = ["Open", "High", "Low", "Close"]
+                    missing_cols = [col for col in required_cols if col not in df.columns]
+                    if missing_cols:
+                        print(f"  ⚠ Missing required columns for {ticker} (stage: {stage}): {missing_cols}. Available: {list(df.columns)}", flush=True)
                         return None
                     
                     return df
