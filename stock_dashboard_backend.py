@@ -3161,19 +3161,25 @@ def run_analysis_logic(force_refresh=False):
             # (but NOT if we just resumed from downloading - those need to be processed)
             cached_data = load_cache()
             if cached_data and cached_data.get("_partial") and cached_data.get("_processed_tickers"):
-                processed_tickers_from_checkpoint = cached_data.get("_processed_tickers", [])
-                print(f"  ✓ Resuming from checkpoint: {len(processed_tickers_from_checkpoint)} tickers already processed", flush=True)
-                # Reconstruct results from checkpoint
-                if "sectors" in cached_data:
-                    results = []
-                    for sector in cached_data["sectors"]:
-                        for stock in sector.get("stocks", []):
-                            results.append({
-                                "sector": sector["name"],
-                                "ticker": stock["ticker"],
-                                "z_avg": stock["z"],
-                                "avg_score": stock["avg_score"]
-                            })
+                # Only use this if the checkpoint stage is NOT "downloading"
+                checkpoint_stage = cached_data.get("_stage", "")
+                if checkpoint_stage != "downloading":
+                    processed_tickers_from_checkpoint = cached_data.get("_processed_tickers", [])
+                    print(f"  ✓ Resuming from checkpoint: {len(processed_tickers_from_checkpoint)} tickers already processed", flush=True)
+                    # Reconstruct results from checkpoint
+                    if "sectors" in cached_data:
+                        results = []
+                        for sector in cached_data["sectors"]:
+                            for stock in sector.get("stocks", []):
+                                results.append({
+                                    "sector": sector["name"],
+                                    "ticker": stock["ticker"],
+                                    "z_avg": stock["z"],
+                                    "avg_score": stock["avg_score"]
+                                })
+                else:
+                    # Checkpoint is at downloading stage - stocks need to be processed
+                    print(f"  ℹ Checkpoint is at downloading stage - will process loaded stocks", flush=True)
         
         # Process stocks if we have batch_data and haven't loaded results from checkpoint
         if batch_data and not results:
