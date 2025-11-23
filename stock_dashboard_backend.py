@@ -4651,7 +4651,19 @@ def run_analysis_logic(force_refresh=False):
         if backtest_results:
             response_data["backtest"] = backtest_results
             response_data["backtest_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            response_data["backtest_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Save backtest results to Supabase
+            try:
+                date_str = datetime.now().strftime("%Y-%m-%d")
+                backtest_data = {
+                    "backtest": backtest_results,
+                    "timestamp": response_data["backtest_timestamp"],
+                    "ratio_analysis": ratio_analysis if ratio_analysis else None
+                }
+                save_stock_data_to_supabase("BACKTEST_SUMMARY", "backtested", backtest_data, date_str)
+                print(f"  💾 Saved backtest results to Supabase", flush=True)
+            except Exception as save_error:
+                print(f"  ⚠ Could not save backtest results to Supabase: {save_error}", flush=True)
         
         # Remove partial markers before final save
         if "_partial" in response_data:
