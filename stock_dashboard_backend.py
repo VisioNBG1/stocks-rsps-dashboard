@@ -3706,7 +3706,29 @@ def run_analysis_logic(force_refresh=False):
             else:
                 print("  ⚠ Could not load cached sectors, starting fresh...", flush=True)
                 resume_from_stage = None  # Reset to start fresh
-        elif not force_refresh and not was_resuming_from_downloading:
+        elif not force_refresh:
+            # Check if we have a partial checkpoint with processed_tickers (for stock_analysis resume)
+            cached_data = load_cache()
+            checkpoint_stage = cached_data.get("_stage", "") if cached_data else ""
+            
+            # If resuming from stock_analysis, load already processed results
+            if checkpoint_stage == "stock_analysis" and cached_data and "sectors" in cached_data:
+                print(f"  🔄 Resuming stock_analysis - loading already processed results from checkpoint...", flush=True)
+                output_sectors = cached_data["sectors"]
+                # Reconstruct results from sectors
+                for sector in output_sectors:
+                    for stock in sector.get("stocks", []):
+                        ticker = stock["ticker"]
+                        results.append({
+                            "sector": sector["name"],
+                            "ticker": ticker,
+                            "z_avg": stock["z"],
+                            "avg_score": stock["avg_score"]
+                        })
+                        processed_tickers_from_checkpoint.append(ticker)
+                print(f"  ✓ Loaded {len(results)} already processed stocks from checkpoint", flush=True)
+                print(f"  📋 Already processed: {', '.join(sorted(processed_tickers_from_checkpoint)[:10])}{'...' if len(processed_tickers_from_checkpoint) > 10 else ''}", flush=True)
+            elif not was_resuming_from_downloading:
             # Check if we have a partial checkpoint with processed_tickers
             # (but NOT if we just resumed from downloading - those need to be processed)
             cached_data = load_cache()
