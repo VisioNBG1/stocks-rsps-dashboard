@@ -4151,10 +4151,15 @@ def run_analysis_logic(force_refresh=False):
                                         "ticker": ticker,
                                         "analysis_result": result  # Store full analysis result
                                     }
-                                    save_stock_data_to_supabase(ticker, "z_scored", z_score_data, date_str)
-                                    print(f"  💾 Saved {ticker} z-scores to Supabase", flush=True)
+                                    save_success = save_stock_data_to_supabase(ticker, "z_scored", z_score_data, date_str)
+                                    if save_success:
+                                        print(f"  💾 Saved {ticker} z-scores to Supabase", flush=True)
+                                    else:
+                                        print(f"  ⚠ Failed to save {ticker} z-scores to Supabase (returned False)", flush=True)
                                 except Exception as save_error:
                                     print(f"  ⚠ Could not save {ticker} z-scores to Supabase: {save_error}", flush=True)
+                                    import traceback
+                                    traceback.print_exc()
                                 
                                 # Periodically save checkpoint during processing (every 10 tickers)
                                 if len(processed_tickers) % 10 == 0:
@@ -4538,10 +4543,15 @@ def run_analysis_logic(force_refresh=False):
                                 "num_comparisons": len(sorted_ratio_scores),
                                 "ratio_z_scores": sorted_ratio_scores
                             }
-                            save_stock_data_to_supabase(ticker1, "ratio_analyzed", ratio_data, date_str)
-                            print(f"  💾 Saved {ticker1} ratio analysis to Supabase", flush=True)
+                            save_success = save_stock_data_to_supabase(ticker1, "ratio_analyzed", ratio_data, date_str)
+                            if save_success:
+                                print(f"  💾 Saved {ticker1} ratio analysis to Supabase", flush=True)
+                            else:
+                                print(f"  ⚠ Failed to save {ticker1} ratio analysis to Supabase (returned False)", flush=True)
                         except Exception as save_error:
                             print(f"  ⚠ Could not save {ticker1} ratio analysis to Supabase: {save_error}", flush=True)
+                            import traceback
+                            traceback.print_exc()
                     else:
                         # If no successful comparisons, set score to negative infinity (will be sorted last)
                         ratio_scores[ticker1] = float('-inf')
