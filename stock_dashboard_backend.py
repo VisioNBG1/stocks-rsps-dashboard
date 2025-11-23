@@ -3388,7 +3388,8 @@ def run_analysis_logic(force_refresh=False):
             sys.stdout.flush()
             analysis_progress["status"] = "error"
             analysis_progress["error"] = "No results calculated"
-            return jsonify({"error": "No results calculated. Check server logs for details."}), 500
+            # Don't use jsonify here - return dict instead (this function is called from background thread)
+            return {"error": "No results calculated. Check server logs for details."}
             
         # --- Format data ---
         results_df = pd.DataFrame(results)
