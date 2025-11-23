@@ -2929,22 +2929,33 @@ def run_analysis_logic(force_refresh=False):
         if not force_refresh:
             cached_data = load_cache()
             if cached_data:
+                # Validate checkpoint: if stage is "downloading" or "stock_analysis", it's partial even if _partial is False
+                checkpoint_stage = cached_data.get("_stage", "")
+                is_partial_flag = cached_data.get("_partial", False)
+                
+                # Invalid checkpoint detection: if stage indicates incomplete work, treat as partial
+                incomplete_stages = ["downloading", "stock_analysis", "ratio_analysis"]
+                is_actually_partial = is_partial_flag or (checkpoint_stage in incomplete_stages)
+                
                 # Check if it's a complete cache
-                if not cached_data.get("_partial", False):
+                if not is_actually_partial and "sectors" in cached_data:
                     elapsed = time.time() - start_time
-                    print(f"✓ Loading data from cache... (took {elapsed:.2f}s)")
+                    print(f"✓ Loading data from cache... (took {elapsed:.2f}s)", flush=True)
                     analysis_progress["status"] = "complete"
                     analysis_progress["results"] = cached_data
                     analysis_progress["message"] = "Loaded from cache"
                     return cached_data  # Return dict, not jsonify
                 else:
                     # Partial cache - resume from checkpoint
-                    resume_from_stage = cached_data.get("_stage", None)
+                    resume_from_stage = checkpoint_stage if checkpoint_stage else None
                     print(f"✓ Found partial cache - resuming from stage: {resume_from_stage}", flush=True)
                     if resume_from_stage == "downloading":
                         downloaded_stocks = cached_data.get("downloaded_stocks", [])
+                        if not isinstance(downloaded_stocks, list):
+                            downloaded_stocks = []
                         print(f"  Resuming from downloading stage - {len(downloaded_stocks)} stocks already downloaded", flush=True)
-                        print(f"  Already downloaded: {', '.join(downloaded_stocks[:10])}{'...' if len(downloaded_stocks) > 10 else ''}", flush=True)
+                        if downloaded_stocks:
+                            print(f"  Already downloaded: {', '.join(sorted(downloaded_stocks)[:10])}{'...' if len(downloaded_stocks) > 10 else ''}", flush=True)
                     elif resume_from_stage == "stock_analysis_complete":
                         print("  Resuming from ratio analysis (stock analysis already complete)", flush=True)
                     elif resume_from_stage == "ratio_analysis_complete":
@@ -3948,10 +3959,14 @@ def start_background_analysis():
                     print("="*60 + "\n", flush=True)
                     print("🚀 Resuming analysis from checkpoint...", flush=True)
         
-        # No cache - start analysis automatically
+        # Start analysis (either fresh or resuming from checkpoint)
         print("\n" + "="*60, flush=True)
-        print("🚀 Starting automatic background analysis...", flush=True)
-        print("   (No cache found - will calculate fresh data)", flush=True)
+        if cached_data:
+            print("🚀 Starting automatic background analysis...", flush=True)
+            print(f"   (Resuming from checkpoint: {checkpoint_stage})", flush=True)
+        else:
+            print("🚀 Starting automatic background analysis...", flush=True)
+            print("   (No cache found - will calculate fresh data)", flush=True)
         print("="*60 + "\n", flush=True)
         
         # Call the analysis function directly
