@@ -3918,19 +3918,35 @@ def start_background_analysis():
         if cached_data:
             print("\n" + "="*60, flush=True)
             # Check if it's a complete cache or partial checkpoint
-            if cached_data.get("_partial", False):
-                print(f"✓ Partial checkpoint found - will resume from stage: {cached_data.get('_stage', 'unknown')}", flush=True)
+            # Validate checkpoint: if stage is "downloading" or "stock_analysis", it's partial even if _partial is False
+            checkpoint_stage = cached_data.get("_stage", "")
+            is_partial_flag = cached_data.get("_partial", False)
+            
+            # Invalid checkpoint detection: if stage indicates incomplete work, treat as partial
+            incomplete_stages = ["downloading", "stock_analysis", "ratio_analysis"]
+            is_actually_partial = is_partial_flag or (checkpoint_stage in incomplete_stages)
+            
+            if is_actually_partial:
+                print(f"✓ Partial checkpoint found - will resume from stage: {checkpoint_stage}", flush=True)
                 print("="*60 + "\n", flush=True)
                 # Don't return - continue to start analysis which will resume from checkpoint
                 print("🚀 Resuming analysis from checkpoint...", flush=True)
             else:
-                print("✓ Cache found - analysis already completed", flush=True)
-                print("="*60 + "\n", flush=True)
-                global analysis_progress
-                analysis_progress["status"] = "complete"
-                analysis_progress["results"] = cached_data
-                analysis_progress["message"] = "Loaded from cache"
-                return  # Only return if complete - partial checkpoints should continue
+                # Only treat as complete if it has sectors data and no incomplete stage
+                if "sectors" in cached_data and checkpoint_stage not in incomplete_stages:
+                    print("✓ Cache found - analysis already completed", flush=True)
+                    print("="*60 + "\n", flush=True)
+                    global analysis_progress
+                    analysis_progress["status"] = "complete"
+                    analysis_progress["results"] = cached_data
+                    analysis_progress["message"] = "Loaded from cache"
+                    return  # Only return if complete - partial checkpoints should continue
+                else:
+                    # Invalid or incomplete checkpoint - treat as partial
+                    print(f"⚠ Invalid checkpoint detected (stage={checkpoint_stage}, has_sectors={'sectors' in cached_data}) - treating as partial", flush=True)
+                    print(f"✓ Will resume from stage: {checkpoint_stage if checkpoint_stage else 'beginning'}", flush=True)
+                    print("="*60 + "\n", flush=True)
+                    print("🚀 Resuming analysis from checkpoint...", flush=True)
         
         # No cache - start analysis automatically
         print("\n" + "="*60, flush=True)
