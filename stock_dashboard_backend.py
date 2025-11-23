@@ -3437,25 +3437,24 @@ def run_analysis_logic(force_refresh=False):
                     print(f"  ⚠ Data for {ticker} not found or invalid, will re-download", flush=True)
                     stocks_to_redownload.append(ticker)  # Add to re-download list
             
-            # IMPORTANT: Filter out stocks that are in the checkpoint's downloaded_stocks list
-            # Even if their cache files are missing, they were downloaded before
-            # We only need to re-download them to get the data for processing, but we should
-            # exclude them from the "remaining" count calculation
-            checkpoint_downloaded_set = set(downloaded_stocks)  # Stocks in checkpoint
+            # Use Supabase as the source of truth for what's been downloaded
+            # This is more reliable than the checkpoint which may be outdated
+            all_downloaded_set = set(supabase_stocks) if len(supabase_stocks) > len(downloaded_stocks) else set(downloaded_stocks)
             successfully_loaded_stocks = set(batch_data.keys())  # Stocks with valid cache files
             
-            # Calculate remaining: stocks NOT in checkpoint AND NOT successfully loaded
-            # Then add stocks that need re-download (they're in checkpoint but cache missing)
-            remaining_tickers = [t for t in all_tickers if t not in checkpoint_downloaded_set and t not in successfully_loaded_stocks]
-            # Add stocks that need to be re-downloaded (they're in checkpoint but cache is missing)
+            # Calculate remaining: stocks NOT in Supabase/downloaded list AND NOT successfully loaded
+            # Then add stocks that need re-download (they're marked as downloaded but data is missing)
+            remaining_tickers = [t for t in all_tickers if t not in all_downloaded_set and t not in successfully_loaded_stocks]
+            # Add stocks that need to be re-downloaded (they're marked as downloaded but cache is missing)
             remaining_tickers.extend(stocks_to_redownload)
             remaining_tickers = list(set(remaining_tickers))  # Remove duplicates
             
-            print(f"  📊 Checkpoint analysis:", flush=True)
+            print(f"  📊 Download status analysis:", flush=True)
+            print(f"     - Stocks in Supabase: {len(supabase_stocks)}", flush=True)
             print(f"     - Stocks in checkpoint: {len(downloaded_stocks)}", flush=True)
-            print(f"     - Stocks with valid cache: {len(successfully_loaded_stocks)}", flush=True)
+            print(f"     - Stocks successfully loaded: {len(successfully_loaded_stocks)}", flush=True)
             print(f"     - Stocks needing re-download: {len(stocks_to_redownload)}", flush=True)
-            print(f"     - Stocks never downloaded: {len([t for t in all_tickers if t not in checkpoint_downloaded_set])}", flush=True)
+            print(f"     - Stocks never downloaded: {len([t for t in all_tickers if t not in all_downloaded_set])}", flush=True)
             print(f"  📥 Remaining stocks to download: {len(remaining_tickers)}/{len(all_tickers)} (including {len(stocks_to_redownload)} that need re-download)", flush=True)
             
             if not remaining_tickers:
