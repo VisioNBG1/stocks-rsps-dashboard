@@ -426,8 +426,8 @@ SECTORS = {
     ],
     "Consumer Discretionary": [
         "AMZN", "TSLA", "NKE", "SBUX", "MCD", "YUM", "CMG", "DPZ", "WING", "CAVA",
-        "DIS", "NFLX", "PARA", "WBD", "FOXA", "ROKU", "FUBO", "DKNG", "PENN", "LNW",
-        "F", "GM", "STLA", "HMC", "TM", "RIVN", "LCID", "FISK", "NKLA", "HYZN"
+        "DIS", "NFLX", "WBD", "FOXA", "ROKU", "FUBO", "DKNG", "PENN", "LNW",
+        "F", "GM", "STLA", "HMC", "TM", "RIVN", "LCID", "FISK"
     ],
     "Real Estate": [
         "AMT", "PLD", "EQIX", "PSA", "WELL", "VICI", "SPG", "O", "DLR", "EXPI",
@@ -441,8 +441,8 @@ SECTORS = {
     ],
     "Communication Services": [
         "GOOGL", "GOOG", "META", "NFLX", "DIS", "CMCSA", "T", "VZ", "TMUS", "LUMN",
-        "PARA", "WBD", "FOXA", "NWSA", "NWS", "IAC", "ANGI", "TRIP", "EXPE", "BKNG",
-        "ABNB", "UBER", "LYFT", "GRAB", "DIDI", "BIDU", "JD", "PDD", "BABA", "TME"
+        "WBD", "FOXA", "NWSA", "NWS", "IAC", "ANGI", "TRIP", "EXPE", "BKNG",
+        "ABNB", "UBER", "LYFT", "GRAB", "BIDU", "JD", "PDD", "BABA", "TME"
     ]
 }
 
@@ -3065,10 +3065,24 @@ def run_analysis_logic(force_refresh=False):
                             download_success = True
                             # Save checkpoint after each successful download
                             if idx % 5 == 0:  # Save checkpoint every 5 stocks
+                                # Merge existing downloaded_stocks with current batch_data
+                                current_downloaded = list(set(list(batch_data.keys())))
+                                try:
+                                    existing_checkpoint = load_cache()
+                                    if existing_checkpoint and existing_checkpoint.get("downloaded_stocks"):
+                                        existing_downloaded = existing_checkpoint.get("downloaded_stocks", [])
+                                        if not isinstance(existing_downloaded, list):
+                                            existing_downloaded = []
+                                        all_downloaded = list(set(current_downloaded + existing_downloaded))
+                                    else:
+                                        all_downloaded = current_downloaded
+                                except:
+                                    all_downloaded = current_downloaded
+                                
                                 partial_response = {
                                     "_partial": True,
                                     "_stage": "downloading",
-                                    "downloaded_stocks": list(batch_data.keys()),
+                                    "downloaded_stocks": all_downloaded,
                                     "progress": f"{idx}/{len(all_tickers)} stocks downloaded"
                                 }
                                 try:
