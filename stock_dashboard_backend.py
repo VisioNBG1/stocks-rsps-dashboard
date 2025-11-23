@@ -2993,10 +2993,12 @@ def run_analysis_logic(force_refresh=False):
             
             if not remaining_tickers:
                 print("  ✓ All stocks already downloaded, proceeding to analysis...", flush=True)
+                # All stocks are loaded in batch_data, continue to processing
             else:
                 # Update all_tickers to only include remaining ones
                 all_tickers = remaining_tickers
                 print(f"  Starting download of remaining {len(remaining_tickers)} stocks...", flush=True)
+                # Continue to download remaining stocks - batch_data already has the cached ones
         else:
             print(f"  Downloading data for {len(all_tickers)} stocks individually (to avoid rate limits)...")
             analysis_progress["status"] = "downloading"
@@ -3116,10 +3118,14 @@ def run_analysis_logic(force_refresh=False):
             if not resume_from_stage and not batch_data:
                 raise Exception("Failed to download any stock data after multiple attempts.")
             
-            if not resume_from_stage:
+            # Print status (whether we downloaded or resumed)
+            if resume_from_stage == "downloading":
+                print(f"  ✓ Ready to process {len(batch_data)} stocks (loaded from cache + newly downloaded)", flush=True)
+            else:
                 print(f"  ✓ Successfully downloaded {len(batch_data)}/{len(all_tickers)} stocks", flush=True)
-                print(f"  Starting to process {len(batch_data)} downloaded stocks...", flush=True)
-                sys.stdout.flush()
+            
+            print(f"  Starting to process {len(batch_data)} downloaded stocks...", flush=True)
+            sys.stdout.flush()
         
         # Initialize results list early (needed for all code paths)
         results = []
