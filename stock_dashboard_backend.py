@@ -417,7 +417,7 @@ SECTORS = {
     "Consumer Staples": [
         "PG", "KO", "WMT", "COST", "PEP", "CL", "MDLZ", "GIS", "KMB", "HSY",
         "SJM", "CPB", "CAG", "HRL", "TSN", "BG", "ADM", "LW", "FLO", "SJM",
-        "TGT", "HD", "LOW", "TJX", "ROST", "BBWI", "DKS", "ANF", "AEO", "GPS"
+        "TGT", "HD", "LOW", "TJX", "ROST", "BBWI", "DKS", "ANF", "AEO"
     ],
     "Financials": [
         "JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "SCHW", "AXP", "COF",
