@@ -2790,6 +2790,9 @@ def load_cache():
                 with open(cache_path, 'r') as f:
                     data = json.load(f)
                     print(f"  ✓ Cache file found: {cache_path} ({os.path.getsize(cache_path)} bytes)", flush=True)
+                    # Check if it's a partial checkpoint
+                    if data.get("_partial", False):
+                        print(f"  ⚠ Local cache is partial (stage: {data.get('_stage', 'unknown')})", flush=True)
                     # Also save to Supabase if available (for persistence)
                     if supabase_client and data:
                         try:
@@ -2979,7 +2982,7 @@ def run_analysis_logic(force_refresh=False):
             # Load already downloaded stocks from cache files
             batch_data = {}
             for ticker in downloaded_stocks:
-                ticker_data = load_cached_stock_data(ticker)
+                ticker_data = get_cached_stock_data(ticker)
                 if ticker_data is not None and not ticker_data.empty:
                     batch_data[ticker] = ticker_data
                     print(f"  ✓ Loaded cached data for {ticker} ({len(ticker_data)} rows)", flush=True)
@@ -3840,12 +3843,18 @@ def start_background_analysis():
         cached_data = load_cache()
         if cached_data:
             print("\n" + "="*60, flush=True)
-            print("✓ Cache found - analysis already completed", flush=True)
-            print("="*60 + "\n", flush=True)
-            global analysis_progress
-            analysis_progress["status"] = "complete"
-            analysis_progress["results"] = cached_data
-            analysis_progress["message"] = "Loaded from cache"
+            # Check if it's a complete cache or partial checkpoint
+            if cached_data.get("_partial", False):
+                print(f"✓ Partial checkpoint found - will resume from stage: {cached_data.get('_stage', 'unknown')}", flush=True)
+                print("="*60 + "\n", flush=True)
+                # Don't set status to complete - let it resume
+            else:
+                print("✓ Cache found - analysis already completed", flush=True)
+                print("="*60 + "\n", flush=True)
+                global analysis_progress
+                analysis_progress["status"] = "complete"
+                analysis_progress["results"] = cached_data
+                analysis_progress["message"] = "Loaded from cache"
             return
         
         # No cache - start analysis automatically
