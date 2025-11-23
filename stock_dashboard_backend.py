@@ -3756,17 +3756,17 @@ def run_analysis_logic(force_refresh=False):
                 print(f"  ✓ Loaded {len(results)} already processed stocks from checkpoint", flush=True)
                 print(f"  📋 Already processed: {', '.join(sorted(processed_tickers_from_checkpoint)[:10])}{'...' if len(processed_tickers_from_checkpoint) > 10 else ''}", flush=True)
             elif not was_resuming_from_downloading:
-            # Check if we have a partial checkpoint with processed_tickers
-            # (but NOT if we just resumed from downloading - those need to be processed)
-            cached_data = load_cache()
-            if cached_data and cached_data.get("_partial") and cached_data.get("_processed_tickers"):
-                # Only use this if the checkpoint stage is NOT "downloading"
-                checkpoint_stage = cached_data.get("_stage", "")
-                if checkpoint_stage != "downloading":
-                    processed_tickers_from_checkpoint = cached_data.get("_processed_tickers", [])
-                    print(f"  ✓ Resuming from checkpoint: {len(processed_tickers_from_checkpoint)} tickers already processed", flush=True)
-                    # Reconstruct results from checkpoint
-                    if "sectors" in cached_data:
+                # Check if we have a partial checkpoint with processed_tickers
+                # (but NOT if we just resumed from downloading - those need to be processed)
+                cached_data = load_cache()
+                if cached_data and cached_data.get("_partial") and cached_data.get("_processed_tickers"):
+                    # Only use this if the checkpoint stage is NOT "downloading"
+                    checkpoint_stage = cached_data.get("_stage", "")
+                    if checkpoint_stage != "downloading":
+                        processed_tickers_from_checkpoint = cached_data.get("_processed_tickers", [])
+                        print(f"  ✓ Resuming from checkpoint: {len(processed_tickers_from_checkpoint)} tickers already processed", flush=True)
+                        # Reconstruct results from checkpoint
+                        if "sectors" in cached_data:
                         results = []
                         for sector in cached_data["sectors"]:
                             for stock in sector.get("stocks", []):
