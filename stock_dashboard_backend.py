@@ -3387,7 +3387,11 @@ def run_analysis_logic(force_refresh=False):
             stocks_to_redownload = []  # Stocks that were marked as downloaded but data is missing
             date_str = datetime.now().strftime("%Y-%m-%d")
             
-            for ticker in downloaded_stocks:
+            # Use the full list from Supabase if it's larger (it's the source of truth)
+            stocks_to_load = supabase_stocks if len(supabase_stocks) > len(downloaded_stocks) else downloaded_stocks
+            print(f"  📥 Loading {len(stocks_to_load)} stocks from Supabase...", flush=True)
+            
+            for ticker in stocks_to_load:
                 loaded = False
                 
                 # Try Supabase first (persistent storage)
