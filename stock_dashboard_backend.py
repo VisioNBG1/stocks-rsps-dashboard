@@ -2585,18 +2585,37 @@ def save_checkpoint_to_supabase(data):
                 checkpoint_data,
                 on_conflict="id"
             ).execute()
+            print(f"  ✓ Checkpoint upserted to Supabase (result: {len(result.data) if result.data else 0} records)", flush=True)
         except Exception as upsert_error:
+            print(f"  ⚠ Upsert failed: {upsert_error}, trying fallback...", flush=True)
             # Fallback: try insert, then update if exists
             try:
-                supabase_client.table("checkpoints").insert(checkpoint_data).execute()
-            except:
+                insert_result = supabase_client.table("checkpoints").insert(checkpoint_data).execute()
+                print(f"  ✓ Checkpoint inserted to Supabase (result: {len(insert_result.data) if insert_result.data else 0} records)", flush=True)
+            except Exception as insert_error:
+                print(f"  ⚠ Insert failed: {insert_error}, trying update...", flush=True)
                 # Update if insert fails (record exists)
-                supabase_client.table("checkpoints").update({
-                    "data": checkpoint_data["data"],
-                    "updated_at": checkpoint_data["updated_at"],
-                    "stage": checkpoint_data["stage"],
-                    "is_partial": checkpoint_data["is_partial"]
-                }).eq("id", "main_checkpoint").execute()
+                try:
+                    update_result = supabase_client.table("checkpoints").update({
+                        "data": checkpoint_data["data"],
+                        "updated_at": checkpoint_data["updated_at"],
+                        "stage": checkpoint_data["stage"],
+                        "is_partial": checkpoint_data["is_partial"]
+                    }).eq("id", "main_checkpoint").execute()
+                    print(f"  ✓ Checkpoint updated in Supabase (result: {len(update_result.data) if update_result.data else 0} records)", flush=True)
+                except Exception as update_error:
+                    print(f"  ⚠ Update also failed: {update_error}", flush=True)
+                    raise update_error
+        
+        # Verify the save by reading it back
+        try:
+            verify_result = supabase_client.table("checkpoints").select("*").eq("id", "main_checkpoint").execute()
+            if verify_result.data and len(verify_result.data) > 0:
+                print(f"  ✓ Verified: Checkpoint exists in Supabase (stage: {verify_result.data[0].get('stage', 'unknown')})", flush=True)
+            else:
+                print(f"  ⚠ Warning: Checkpoint save verification failed - not found after save!", flush=True)
+        except Exception as verify_error:
+            print(f"  ⚠ Could not verify checkpoint save: {verify_error}", flush=True)
         
         print(f"  ✓ Checkpoint saved to Supabase database", flush=True)
         return True
