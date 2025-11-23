@@ -2761,11 +2761,32 @@ def save_stock_data_to_supabase(ticker, stage, data, date_str=None):
         
         # Convert DataFrame to JSON if needed
         if isinstance(data, pd.DataFrame):
+            # Handle MultiIndex columns by flattening them
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = data.columns.droplevel(1)
+            
+            # Normalize column names to simple strings
+            normalized_columns = []
+            for col in data.columns:
+                col_str = str(col)
+                # If column is a tuple or list-like string, extract the first element
+                if col_str.startswith("('") or col_str.startswith("['"):
+                    # Try to parse and get the actual column name
+                    try:
+                        import ast
+                        parsed = ast.literal_eval(col_str)
+                        if isinstance(parsed, (list, tuple)) and len(parsed) > 0:
+                            col_str = str(parsed[0])
+                    except:
+                        # If parsing fails, use the string as-is but clean it
+                        col_str = col_str.strip("()[]'\"")
+                normalized_columns.append(col_str)
+            
             # Convert DataFrame to dict with proper date handling
             # Ensure we preserve the structure correctly
             data_dict = {
                 "_type": "DataFrame",
-                "columns": list(data.columns),
+                "columns": normalized_columns,
                 "index": [str(idx) for idx in data.index],
                 "data": data.values.tolist()
             }
@@ -2865,7 +2886,23 @@ def load_stock_data_from_supabase(ticker, stage, date_str=None):
                     
                     # Create DataFrame using a more explicit approach
                     # First, ensure columns is a simple list of strings
-                    columns_list = [str(col) for col in columns]
+                    # Parse column names that might be stored as string representations of lists/tuples
+                    columns_list = []
+                    for col in columns:
+                        col_str = str(col)
+                        # If column is stored as a string representation of a list/tuple, parse it
+                        if col_str.startswith("['") or col_str.startswith("('"):
+                            try:
+                                import ast
+                                parsed = ast.literal_eval(col_str)
+                                if isinstance(parsed, (list, tuple)) and len(parsed) > 0:
+                                    # Use the first element (the actual column name)
+                                    col_str = str(parsed[0])
+                            except:
+                                # If parsing fails, try to extract the column name manually
+                                # Remove brackets and quotes, take first element
+                                col_str = col_str.strip("[]()'\"").split(",")[0].strip("'\"")
+                        columns_list.append(col_str)
                     
                     # Debug: Print actual structure
                     print(f"  🔍 Debug {ticker}: {len(columns_list)} columns, {len(data_rows)} rows, first row has {len(data_rows[0]) if data_rows else 0} values", flush=True)
