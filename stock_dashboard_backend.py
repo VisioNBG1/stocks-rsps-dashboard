@@ -2824,6 +2824,190 @@ def save_stock_data_to_supabase(ticker, stage, data, date_str=None):
         print(f"  ⚠ Error saving stock data for {ticker} (stage: {stage}): {e}", flush=True)
         return False
 
+def save_z_score_to_supabase(ticker, z_avg, avg_score, sector, analysis_result, date_str=None):
+    """Save z-score data to Supabase z_scores table"""
+    if not supabase_client:
+        return False
+    
+    try:
+        if date_str is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        z_score_record = {
+            "ticker": ticker,
+            "date_str": date_str,
+            "z_avg": float(z_avg) if z_avg is not None else None,
+            "avg_score": float(avg_score) if avg_score is not None else None,
+            "sector": sector,
+            "analysis_result": analysis_result if analysis_result else None
+        }
+        
+        # Use upsert to handle duplicates
+        result = supabase_client.table("z_scores").upsert(
+            z_score_record,
+            on_conflict="ticker,date_str"
+        ).execute()
+        
+        if result.data and len(result.data) > 0:
+            return True
+        else:
+            print(f"  ⚠ Failed to save z-score for {ticker}", flush=True)
+            return False
+    except Exception as e:
+        print(f"  ⚠ Error saving z-score for {ticker}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return False
+
+def load_z_score_from_supabase(ticker, date_str=None):
+    """Load z-score data from Supabase z_scores table"""
+    if not supabase_client:
+        return None
+    
+    try:
+        if date_str is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        result = supabase_client.table("z_scores").select("*").eq("ticker", ticker).eq("date_str", date_str).execute()
+        
+        if result.data and len(result.data) > 0:
+            record = result.data[0]
+            return {
+                "z_avg": record.get("z_avg"),
+                "avg_score": record.get("avg_score"),
+                "sector": record.get("sector"),
+                "analysis_result": record.get("analysis_result")
+            }
+        else:
+            return None
+    except Exception as e:
+        print(f"  ⚠ Error loading z-score for {ticker}: {e}", flush=True)
+        return None
+
+def get_z_scored_stocks_from_supabase_table(date_str=None):
+    """Get list of all stocks that have been z-scored (from z_scores table)"""
+    if not supabase_client:
+        return []
+    
+    try:
+        if date_str is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        result = supabase_client.table("z_scores").select("ticker").eq("date_str", date_str).execute()
+        
+        if result.data:
+            tickers = list(set([record.get("ticker") for record in result.data if record.get("ticker")]))
+            print(f"  📊 Found {len(tickers)} z-scored stocks in z_scores table for {date_str}", flush=True)
+            return tickers
+        else:
+            print(f"  ℹ No z-scored stocks found in z_scores table for {date_str}", flush=True)
+            return []
+    except Exception as e:
+        print(f"  ⚠ Error getting z-scored stocks from z_scores table: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return []
+
+def save_ratio_analysis_to_supabase(ticker, ratio_score, num_comparisons, ratio_z_scores, date_str=None):
+    """Save ratio analysis data to Supabase ratio_analysis table"""
+    if not supabase_client:
+        return False
+    
+    try:
+        if date_str is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        ratio_record = {
+            "ticker": ticker,
+            "date_str": date_str,
+            "ratio_score": float(ratio_score) if ratio_score is not None else None,
+            "num_comparisons": int(num_comparisons) if num_comparisons is not None else None,
+            "ratio_z_scores": ratio_z_scores if ratio_z_scores else None
+        }
+        
+        # Use upsert to handle duplicates
+        result = supabase_client.table("ratio_analysis").upsert(
+            ratio_record,
+            on_conflict="ticker,date_str"
+        ).execute()
+        
+        if result.data and len(result.data) > 0:
+            return True
+        else:
+            print(f"  ⚠ Failed to save ratio analysis for {ticker}", flush=True)
+            return False
+    except Exception as e:
+        print(f"  ⚠ Error saving ratio analysis for {ticker}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return False
+
+def save_ratio_analysis_summary_to_supabase(ratio_analysis, timestamp, total_stocks, date_str=None):
+    """Save ratio analysis summary to Supabase ratio_analysis_summary table"""
+    if not supabase_client:
+        return False
+    
+    try:
+        if date_str is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        summary_record = {
+            "date_str": date_str,
+            "ratio_analysis": ratio_analysis,
+            "timestamp": timestamp,
+            "total_stocks": int(total_stocks) if total_stocks is not None else None
+        }
+        
+        # Use upsert to handle duplicates
+        result = supabase_client.table("ratio_analysis_summary").upsert(
+            summary_record,
+            on_conflict="date_str"
+        ).execute()
+        
+        if result.data and len(result.data) > 0:
+            return True
+        else:
+            print(f"  ⚠ Failed to save ratio analysis summary", flush=True)
+            return False
+    except Exception as e:
+        print(f"  ⚠ Error saving ratio analysis summary: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return False
+
+def save_backtest_to_supabase(backtest_results, ratio_analysis, timestamp, date_str=None):
+    """Save backtest results to Supabase back_test table"""
+    if not supabase_client:
+        return False
+    
+    try:
+        if date_str is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        backtest_record = {
+            "date_str": date_str,
+            "backtest_results": backtest_results,
+            "ratio_analysis": ratio_analysis,
+            "timestamp": timestamp
+        }
+        
+        # Use upsert to handle duplicates
+        result = supabase_client.table("back_test").upsert(
+            backtest_record,
+            on_conflict="date_str"
+        ).execute()
+        
+        if result.data and len(result.data) > 0:
+            return True
+        else:
+            print(f"  ⚠ Failed to save backtest results", flush=True)
+            return False
+    except Exception as e:
+        print(f"  ⚠ Error saving backtest results: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return False
+
 def load_stock_data_from_supabase(ticker, stage, date_str=None):
     """Load stock data from Supabase stock_data table"""
     if not supabase_client:
@@ -4220,19 +4404,12 @@ def run_analysis_logic(force_refresh=False):
                                 print(f"  ✓ {ticker}: z_avg = {z_avg:.3f}, avg_score = {avg_score:.3f} (completed in {elapsed_total:.1f}s)", flush=True)
                                 sys.stdout.flush()
                                 
-                                # Save z-score results to Supabase for this stock
+                                # Save z-score results to Supabase z_scores table
                                 try:
                                     date_str = datetime.now().strftime("%Y-%m-%d")
-                                    z_score_data = {
-                                        "z_avg": z_avg,
-                                        "avg_score": avg_score,
-                                        "sector": sector,
-                                        "ticker": ticker,
-                                        "analysis_result": result  # Store full analysis result
-                                    }
-                                    save_success = save_stock_data_to_supabase(ticker, "z_scored", z_score_data, date_str)
+                                    save_success = save_z_score_to_supabase(ticker, z_avg, avg_score, sector, result, date_str)
                                     if save_success:
-                                        print(f"  💾 Saved {ticker} z-scores to Supabase", flush=True)
+                                        print(f"  💾 Saved {ticker} z-scores to Supabase z_scores table", flush=True)
                                     else:
                                         print(f"  ⚠ Failed to save {ticker} z-scores to Supabase (returned False)", flush=True)
                                 except Exception as save_error:
@@ -4613,18 +4790,12 @@ def run_analysis_logic(force_refresh=False):
                         print(f"  {ticker1}: {avg_ratio_score:.3f} (from {len(sorted_ratio_scores)} comparisons)", flush=True)
                         sys.stdout.flush()
                         
-                        # Save ratio analysis results to Supabase for this stock
+                        # Save ratio analysis results to Supabase ratio_analysis table
                         try:
                             date_str = datetime.now().strftime("%Y-%m-%d")
-                            ratio_data = {
-                                "ticker": ticker1,
-                                "ratio_score": avg_ratio_score,
-                                "num_comparisons": len(sorted_ratio_scores),
-                                "ratio_z_scores": sorted_ratio_scores
-                            }
-                            save_success = save_stock_data_to_supabase(ticker1, "ratio_analyzed", ratio_data, date_str)
+                            save_success = save_ratio_analysis_to_supabase(ticker1, avg_ratio_score, len(sorted_ratio_scores), sorted_ratio_scores, date_str)
                             if save_success:
-                                print(f"  💾 Saved {ticker1} ratio analysis to Supabase", flush=True)
+                                print(f"  💾 Saved {ticker1} ratio analysis to Supabase ratio_analysis table", flush=True)
                             else:
                                 print(f"  ⚠ Failed to save {ticker1} ratio analysis to Supabase (returned False)", flush=True)
                         except Exception as save_error:
