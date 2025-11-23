@@ -2825,6 +2825,10 @@ def load_stock_data_from_supabase(ticker, stage, date_str=None):
                     data_rows = data_dict.get("data", [])
                     index_data = data_dict.get("index", [])
                     
+                    # Ensure columns is a list
+                    if not isinstance(columns, list):
+                        columns = list(columns) if hasattr(columns, '__iter__') else []
+                    
                     # Ensure data_rows is a list of lists
                     if not isinstance(data_rows, list) or len(data_rows) == 0:
                         print(f"  ⚠ No data rows found for {ticker}", flush=True)
@@ -2835,22 +2839,68 @@ def load_stock_data_from_supabase(ticker, stage, date_str=None):
                         print(f"  ⚠ No columns found for {ticker}", flush=True)
                         return None
                     
-                    # Check first row to verify structure
-                    if len(data_rows) > 0:
-                        first_row_cols = len(data_rows[0]) if isinstance(data_rows[0], list) else 0
-                        if first_row_cols != len(columns):
-                            print(f"  ⚠ Column mismatch for {ticker}: {len(columns)} columns but {first_row_cols} values in first row", flush=True)
-                            # Try to fix by truncating or padding
-                            if first_row_cols > len(columns):
-                                # More data than columns - truncate data
-                                data_rows = [row[:len(columns)] for row in data_rows]
-                            elif first_row_cols < len(columns):
-                                # Less data than columns - can't fix, return None
-                                print(f"     Cannot fix: need {len(columns)} columns but have {first_row_cols}", flush=True)
-                                return None
+                    # Verify data structure - ensure all rows are lists
+                    if not all(isinstance(row, (list, tuple)) for row in data_rows):
+                        print(f"  ⚠ Invalid data structure for {ticker}: rows are not all lists/tuples", flush=True)
+                        return None
                     
-                    # Create DataFrame - don't pass index in constructor to avoid confusion
-                    df = pd.DataFrame(data_rows, columns=columns)
+                    # Check first row to verify structure
+                    first_row_cols = len(data_rows[0]) if data_rows else 0
+                    num_columns = len(columns)
+                    
+                    if first_row_cols != num_columns:
+                        print(f"  ⚠ Column mismatch for {ticker}: {num_columns} columns but {first_row_cols} values in first row", flush=True)
+                        # Try to fix by truncating or padding
+                        if first_row_cols > num_columns:
+                            # More data than columns - truncate data
+                            print(f"     Truncating data rows from {first_row_cols} to {num_columns} columns", flush=True)
+                            data_rows = [list(row)[:num_columns] for row in data_rows]
+                        elif first_row_cols < num_columns:
+                            # Less data than columns - can't fix, return None
+                            print(f"     Cannot fix: need {num_columns} columns but have {first_row_cols}", flush=True)
+                            return None
+                    
+                    # Ensure all rows are lists (not tuples) and have correct length
+                    data_rows = [list(row) for row in data_rows]
+                    
+                    # Create DataFrame using a more explicit approach
+                    # First, ensure columns is a simple list of strings
+                    columns_list = [str(col) for col in columns]
+                    
+                    # Debug: Print actual structure
+                    print(f"  🔍 Debug {ticker}: {len(columns_list)} columns, {len(data_rows)} rows, first row has {len(data_rows[0]) if data_rows else 0} values", flush=True)
+                    
+                    # Create DataFrame - use explicit column names to avoid pandas confusion
+                    try:
+                        # Method 1: Create from dict (most reliable)
+                        # Transpose: each column becomes a list of values
+                        data_dict_format = {}
+                        for i, col_name in enumerate(columns_list):
+                            if i < len(data_rows[0]):
+                                data_dict_format[col_name] = [row[i] if i < len(row) else None for row in data_rows]
+                            else:
+                                data_dict_format[col_name] = [None] * len(data_rows)
+                        
+                        df = pd.DataFrame(data_dict_format)
+                        
+                    except Exception as dict_error:
+                        # Method 2: Direct construction (fallback)
+                        print(f"  ⚠ Dict method failed for {ticker}, trying direct: {dict_error}", flush=True)
+                        try:
+                            # Ensure all rows have the same length
+                            max_cols = max(len(row) for row in data_rows) if data_rows else 0
+                            if max_cols != len(columns_list):
+                                print(f"  ⚠ Adjusting: max_cols={max_cols}, columns={len(columns_list)}", flush=True)
+                                # Pad or truncate columns to match
+                                if max_cols > len(columns_list):
+                                    columns_list.extend([f"col_{i}" for i in range(len(columns_list), max_cols)])
+                                else:
+                                    columns_list = columns_list[:max_cols]
+                            
+                            df = pd.DataFrame(data_rows, columns=columns_list[:max_cols])
+                        except Exception as direct_error:
+                            print(f"  ⚠ Direct construction also failed for {ticker}: {direct_error}", flush=True)
+                            return None
                     
                     # Set index separately if available and length matches
                     if index_data and len(index_data) == len(df):
@@ -2869,12 +2919,19 @@ def load_stock_data_from_supabase(ticker, stage, date_str=None):
                         print(f"  ⚠ Empty DataFrame for {ticker}", flush=True)
                         return None
                     
+                    # Final validation
+                    if len(df.columns) != num_columns:
+                        print(f"  ⚠ DataFrame column count mismatch for {ticker}: expected {num_columns}, got {len(df.columns)}", flush=True)
+                        return None
+                    
                     return df
                 except Exception as df_error:
                     print(f"  ⚠ Error reconstructing DataFrame for {ticker}: {df_error}", flush=True)
                     print(f"     Data structure: columns={len(data_dict.get('columns', []))}, rows={len(data_dict.get('data', []))}, index={len(data_dict.get('index', []))}", flush=True)
                     if len(data_dict.get('data', [])) > 0:
-                        print(f"     First row length: {len(data_dict.get('data', [])[0]) if data_dict.get('data', []) else 0}", flush=True)
+                        first_row = data_dict.get('data', [])[0]
+                        print(f"     First row: {first_row} (type: {type(first_row)}, length: {len(first_row) if hasattr(first_row, '__len__') else 'N/A'})", flush=True)
+                        print(f"     Columns: {data_dict.get('columns', [])}", flush=True)
                     import traceback
                     traceback.print_exc()
                     return None
