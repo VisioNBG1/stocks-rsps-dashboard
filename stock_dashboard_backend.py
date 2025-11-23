@@ -3154,32 +3154,38 @@ def run_analysis_logic(force_refresh=False):
                             batch_data[ticker] = ticker_data
                             print(f"    ✓ {ticker} downloaded successfully ({len(ticker_data)} rows)", flush=True)
                             download_success = True
-                            # Save checkpoint after each successful download
-                            if idx % 5 == 0:  # Save checkpoint every 5 stocks
-                                # Merge existing downloaded_stocks with current batch_data
-                                current_downloaded = list(set(list(batch_data.keys())))
-                                try:
-                                    existing_checkpoint = load_cache()
-                                    if existing_checkpoint and existing_checkpoint.get("downloaded_stocks"):
-                                        existing_downloaded = existing_checkpoint.get("downloaded_stocks", [])
-                                        if not isinstance(existing_downloaded, list):
-                                            existing_downloaded = []
-                                        all_downloaded = list(set(current_downloaded + existing_downloaded))
-                                    else:
-                                        all_downloaded = current_downloaded
-                                except:
+                            
+                            # Update checkpoint after EVERY successful download to ensure progress is saved
+                            # Merge existing downloaded_stocks with current batch_data
+                            current_downloaded = list(set(list(batch_data.keys())))  # All stocks in batch_data (including newly downloaded)
+                            try:
+                                existing_checkpoint = load_cache()
+                                if existing_checkpoint and existing_checkpoint.get("downloaded_stocks"):
+                                    existing_downloaded = existing_checkpoint.get("downloaded_stocks", [])
+                                    if not isinstance(existing_downloaded, list):
+                                        existing_downloaded = []
+                                    # Merge: include all stocks from checkpoint AND all stocks in batch_data
+                                    all_downloaded = list(set(current_downloaded + existing_downloaded))
+                                else:
                                     all_downloaded = current_downloaded
-                                
-                                partial_response = {
-                                    "_partial": True,
-                                    "_stage": "downloading",
-                                    "downloaded_stocks": all_downloaded,
-                                    "progress": f"{idx}/{len(all_tickers)} stocks downloaded"
-                                }
-                                try:
-                                    save_cache(partial_response, is_partial=True, stage="downloading", processed_tickers=all_downloaded)
-                                except:
-                                    pass
+                            except:
+                                all_downloaded = current_downloaded
+                            
+                            # Save checkpoint after every successful download (not just every 5)
+                            # This ensures that if deployment is killed, we don't lose progress
+                            partial_response = {
+                                "_partial": True,
+                                "_stage": "downloading",
+                                "downloaded_stocks": all_downloaded,
+                                "progress": f"{idx}/{len(all_tickers)} stocks downloaded"
+                            }
+                            try:
+                                save_cache(partial_response, is_partial=True, stage="downloading", processed_tickers=all_downloaded)
+                                if idx % 5 == 0:  # Only print message every 5 stocks to reduce log spam
+                                    print(f"  💾 Checkpoint saved ({len(all_downloaded)} stocks in checkpoint)", flush=True)
+                            except Exception as e:
+                                print(f"  ⚠ Failed to save checkpoint: {e}", flush=True)
+                            
                             break  # Success, move to next ticker
                         else:
                             print(f"    ✗ {ticker} returned empty data", flush=True)
