@@ -4864,18 +4864,13 @@ def run_analysis_logic(force_refresh=False):
                     "all_ratio_scores": ratio_scores  # Store all ratio scores for reference
                 }
                 
-                # Save ratio analysis summary to Supabase
+                # Save ratio analysis summary to Supabase ratio_analysis_summary table
                 try:
                     date_str = datetime.now().strftime("%Y-%m-%d")
-                    ratio_summary = {
-                        "ratio_analysis": ratio_analysis,
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "total_stocks": len(ratio_scores)
-                    }
-                    # Save as a special record with ticker="RATIO_ANALYSIS_SUMMARY"
-                    save_success = save_stock_data_to_supabase("RATIO_ANALYSIS_SUMMARY", "ratio_analysis", ratio_summary, date_str)
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    save_success = save_ratio_analysis_summary_to_supabase(ratio_analysis, timestamp, len(ratio_scores), date_str)
                     if save_success:
-                        print(f"  💾 Saved ratio analysis summary to Supabase", flush=True)
+                        print(f"  💾 Saved ratio analysis summary to Supabase ratio_analysis_summary table", flush=True)
                     else:
                         print(f"  ⚠ Failed to save ratio analysis summary to Supabase (returned False)", flush=True)
                 except Exception as save_error:
