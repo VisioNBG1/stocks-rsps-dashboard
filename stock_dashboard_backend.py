@@ -2987,6 +2987,23 @@ def load_stock_data_from_supabase(ticker, stage, date_str=None):
                     missing_cols = [col for col in required_cols if col not in df.columns]
                     if missing_cols:
                         print(f"  ⚠ Missing required columns for {ticker} (stage: {stage}): {missing_cols}. Available: {list(df.columns)}", flush=True)
+                        # Try to re-save with correct column names if this is downloaded data
+                        if stage == "downloaded" and df is not None and not df.empty:
+                            print(f"  🔄 Attempting to re-save {ticker} with corrected column names...", flush=True)
+                            try:
+                                # Re-normalize and save
+                                df_corrected = df.copy()
+                                # Force column names to be correct
+                                if 'Open' not in df_corrected.columns:
+                                    for col in df_corrected.columns:
+                                        if str(col).lower() == 'open':
+                                            df_corrected = df_corrected.rename(columns={col: 'Open'})
+                                            break
+                                # Similar for other columns...
+                                save_stock_data_to_supabase(ticker, stage, df_corrected, date_str)
+                                print(f"  ✓ Re-saved {ticker} with corrected columns", flush=True)
+                            except Exception as resave_error:
+                                print(f"  ⚠ Could not re-save {ticker}: {resave_error}", flush=True)
                         return None
                     
                     return df
