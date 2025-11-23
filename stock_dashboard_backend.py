@@ -389,12 +389,12 @@ SECTORS = {
     "Technology": [
         "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA", "AVGO", "ORCL",
         "AMD", "INTC", "CRM", "ADBE", "CSCO", "TXN", "QCOM", "NOW", "AMAT", "MU",
-        "LRCX", "KLAC", "SNPS", "CDNS", "ANSS", "INTU", "FTNT", "PANW", "CRWD", "ZS",
+        "LRCX", "KLAC", "SNPS", "CDNS", "INTU", "FTNT", "PANW", "CRWD", "ZS",
         "NET", "DDOG", "TEAM", "DOCN", "MDB", "SNOW", "PLTR", "RPD", "ESTC"
     ],
     "Energy": [
         "XOM", "CVX", "SLB", "EOG", "COP", "MPC", "PSX", "VLO", "HAL",
-        "OXY", "DVN", "FANG", "CTRA", "APA", "HES", "BKR", "NOV", "FTI", "RIG",
+        "OXY", "DVN", "FANG", "CTRA", "APA", "BKR", "NOV", "FTI", "RIG",
         "HP", "LBRT", "NBR", "PTEN", "WFRD", "VTLE", "SM", "CIVI", "MGY", "MTDR"
     ],
     "Health Care": [
