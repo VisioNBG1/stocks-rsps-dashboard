@@ -2994,12 +2994,22 @@ def run_analysis_logic(force_refresh=False):
             if not remaining_tickers:
                 print("  ✓ All stocks already downloaded, proceeding to analysis...", flush=True)
                 # All stocks are loaded in batch_data, continue to processing
+                # Reset resume_from_stage so processing loop runs
+                resume_from_stage = None
             else:
                 # Update all_tickers to only include remaining ones
                 all_tickers = remaining_tickers
                 print(f"  Starting download of remaining {len(remaining_tickers)} stocks...", flush=True)
+                # Reset resume_from_stage so we can enter the download loop below
+                resume_from_stage = None
                 # Continue to download remaining stocks - batch_data already has the cached ones
+                # Fall through to download loop below
         else:
+            # Fresh start - initialize batch_data
+            batch_data = {}
+        
+        # Download stocks if we have remaining tickers to download
+        if resume_from_stage != "downloading" and len(all_tickers) > 0:
             print(f"  Downloading data for {len(all_tickers)} stocks individually (to avoid rate limits)...")
             analysis_progress["status"] = "downloading"
             analysis_progress["stage"] = "Downloading stock data"
@@ -3018,7 +3028,9 @@ def run_analysis_logic(force_refresh=False):
             
             # Skip batch download entirely - use individual downloads from the start
             # This is slower but more reliable for rate-limited IPs
-            batch_data = {}
+            # Note: batch_data may already contain cached stocks from resume, so don't overwrite it
+            if "batch_data" not in locals() or batch_data is None:
+                batch_data = {}
             download_delay = 15  # 15 seconds between downloads (reduced from 20s to speed up)
             rate_limit_wait = 60  # 60 seconds if rate limited
             
