@@ -2562,16 +2562,26 @@ if SUPABASE_AVAILABLE:
 else:
     print("  ⚠ Supabase library not available - install with: pip install supabase")
 
-def save_checkpoint_to_supabase(data):
+def get_checkpoint_id(date_str=None):
+    """Get checkpoint ID for a given date (defaults to today)"""
+    if date_str is None:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+    return f"main_checkpoint_{date_str}"
+
+def save_checkpoint_to_supabase(data, checkpoint_id=None):
     """Save checkpoint data to Supabase database"""
     if not supabase_client:
         return False
     
     try:
+        # Use date-based checkpoint ID (defaults to today)
+        if checkpoint_id is None:
+            checkpoint_id = get_checkpoint_id()
+        
         # Prepare data for Supabase
         # Note: Supabase JSONB column can store JSON directly, but we'll use JSON string for compatibility
         checkpoint_data = {
-            "id": "main_checkpoint",  # Single checkpoint record
+            "id": checkpoint_id,
             "data": json.dumps(data, default=str),  # Store as JSON string
             "updated_at": datetime.now().isoformat(),
             "stage": data.get("_stage", "unknown"),
@@ -2586,7 +2596,7 @@ def save_checkpoint_to_supabase(data):
         
         # Delete existing record first (if any) to avoid conflicts
         try:
-            delete_result = supabase_client.table("checkpoints").delete().eq("id", "main_checkpoint").execute()
+            delete_result = supabase_client.table("checkpoints").delete().eq("id", checkpoint_id).execute()
             print(f"  🗑️  Deleted existing checkpoint (if any)", flush=True)
         except Exception as delete_error:
             # Ignore delete errors (record might not exist)
@@ -2606,7 +2616,7 @@ def save_checkpoint_to_supabase(data):
                     "updated_at": checkpoint_data["updated_at"],
                     "stage": checkpoint_data["stage"],
                     "is_partial": checkpoint_data["is_partial"]
-                }).eq("id", "main_checkpoint").execute()
+                }).eq("id", checkpoint_id).execute()
                 if update_result.data and len(update_result.data) > 0:
                     print(f"  ✓ Checkpoint updated in Supabase successfully ({len(update_result.data)} record)", flush=True)
                 else:
@@ -2622,7 +2632,7 @@ def save_checkpoint_to_supabase(data):
         
         # Verify the save by reading it back
         try:
-            verify_result = supabase_client.table("checkpoints").select("*").eq("id", "main_checkpoint").execute()
+            verify_result = supabase_client.table("checkpoints").select("*").eq("id", checkpoint_id).execute()
             if verify_result.data and len(verify_result.data) > 0:
                 print(f"  ✓ Verified: Checkpoint exists in Supabase (stage: {verify_result.data[0].get('stage', 'unknown')})", flush=True)
             else:
@@ -2638,15 +2648,34 @@ def save_checkpoint_to_supabase(data):
         traceback.print_exc()
         return False
 
-def load_checkpoint_from_supabase():
+def load_checkpoint_from_supabase(checkpoint_id=None):
     """Load checkpoint data from Supabase database"""
     if not supabase_client:
         print(f"  ⚠ Supabase client not initialized", flush=True)
         return None
     
     try:
-        print(f"  🔍 Querying Supabase for checkpoint 'main_checkpoint'...", flush=True)
-        result = supabase_client.table("checkpoints").select("*").eq("id", "main_checkpoint").execute()
+        # Use date-based checkpoint ID (defaults to today, falls back to most recent)
+        if checkpoint_id is None:
+            checkpoint_id = get_checkpoint_id()
+        
+        print(f"  🔍 Querying Supabase for checkpoint '{checkpoint_id}'...", flush=True)
+        result = supabase_client.table("checkpoints").select("*").eq("id", checkpoint_id).execute()
+        
+        # If today's checkpoint not found, try to find most recent checkpoint
+        if not result.data or len(result.data) == 0:
+            print(f"  ℹ Today's checkpoint not found, searching for most recent checkpoint...", flush=True)
+            # Get all checkpoints and sort by updated_at
+            all_checkpoints = supabase_client.table("checkpoints").select("*").order("updated_at", desc=True).limit(1).execute()
+            if all_checkpoints.data and len(all_checkpoints.data) > 0:
+                checkpoint_record = all_checkpoints.data[0]
+                checkpoint_id = checkpoint_record.get("id", checkpoint_id)
+                print(f"  ✓ Found most recent checkpoint: {checkpoint_id}", flush=True)
+                result = supabase_client.table("checkpoints").select("*").eq("id", checkpoint_id).execute()
+            else:
+                # Fallback to old "main_checkpoint" for backward compatibility
+                print(f"  ℹ No date-based checkpoint found, trying legacy 'main_checkpoint'...", flush=True)
+                result = supabase_client.table("checkpoints").select("*").eq("id", "main_checkpoint").execute()
         
         print(f"  📊 Supabase query result: {len(result.data) if result.data else 0} records found", flush=True)
         
@@ -3351,6 +3380,28 @@ def run_analysis_logic(force_refresh=False):
                                             if elapsed < timeout_seconds:
                                                 print(f"      ... {ticker} still analyzing ({elapsed}s elapsed)...", flush=True)
                                                 sys.stdout.flush()
+                                                # Check for timeout checkpoint during long analysis
+                                                if check_timeout_and_save_checkpoint("stock_analysis", {"sectors": []}, processed_tickers):
+                                                    progress_stop.set()
+                                                    # Prepare partial response
+                                                    partial_response = {
+                                                        "sectors": [],
+                                                        "message": f"Checkpoint saved during {ticker} analysis. Processed {len(processed_tickers)} tickers.",
+                                                        "checkpoint": True
+                                                    }
+                                                    sector_map = {}
+                                                    for r in results:
+                                                        sec = r["sector"]
+                                                        if sec not in sector_map:
+                                                            sector_map[sec] = {"name": sec, "stocks": []}
+                                                        sector_map[sec]["stocks"].append({
+                                                            "ticker": r["ticker"],
+                                                            "z": r["z_avg"],
+                                                            "avg_score": r["avg_score"]
+                                                        })
+                                                    partial_response["sectors"] = list(sector_map.values())
+                                                    save_cache(partial_response, is_partial=True, stage="stock_analysis", processed_tickers=processed_tickers)
+                                                    raise Exception("TIMEOUT_CHECKPOINT: Checkpoint saved during stock analysis, will resume on next deployment")
                                             else:
                                                 break
                                 
@@ -3553,6 +3604,18 @@ def run_analysis_logic(force_refresh=False):
                 comparison_limit = len(all_tickers) - 1  # Compare against all other stocks
                 
                 for i, ticker1 in enumerate(all_tickers):
+                    # Check timeout before processing each stock in ratio analysis
+                    if check_timeout_and_save_checkpoint("ratio_analysis", {"sectors": output_sectors}, []):
+                        partial_response = {
+                            "sectors": output_sectors,
+                            "ratio_analysis": {"top_stocks": [], "current_best": "N/A"},
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "_partial": True,
+                            "_stage": "ratio_analysis"
+                        }
+                        save_cache(partial_response, is_partial=True, stage="ratio_analysis", processed_tickers=[])
+                        raise Exception("TIMEOUT_CHECKPOINT: Checkpoint saved during ratio analysis, will resume on next deployment")
+                    
                     if i % 10 == 0 or i == 0:
                         print(f"  Progress: {i}/{len(all_tickers)} stocks analyzed...", flush=True)
                         analysis_progress["current"] = i
@@ -3716,6 +3779,18 @@ def run_analysis_logic(force_refresh=False):
                             pass
             
             # Perform historical backtest using ratio scores
+                # Check timeout before backtesting
+                if check_timeout_and_save_checkpoint("backtesting", {"sectors": output_sectors, "ratio_analysis": ratio_analysis}, []):
+                    partial_response = {
+                        "sectors": output_sectors,
+                        "ratio_analysis": ratio_analysis,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "_partial": True,
+                        "_stage": "backtesting"
+                    }
+                    save_cache(partial_response, is_partial=True, stage="backtesting", processed_tickers=[])
+                    raise Exception("TIMEOUT_CHECKPOINT: Checkpoint saved during backtesting, will resume on next deployment")
+                
                 if incremental_update:
                     backtest_results = update_backtest_incrementally(
                         cached_data.get("backtest"), 
@@ -4091,9 +4166,9 @@ def start_scheduled_tasks():
         except Exception as e:
             print(f"  ⚠ Error reading checkpoint: {e}")
     
-    # Schedule daily update at 13:00
-    schedule.every().day.at("13:00").do(run_daily_update)
-    print("✓ Scheduled daily update at 13:00 (your local time)")
+    # Schedule daily full analysis at 14:40 UTC (16:40 user's local time)
+    schedule.every().day.at("14:40").do(run_daily_full_analysis)
+    print("✓ Scheduled daily full analysis at 14:40 UTC (16:40 your local time)")
     
     # Run scheduler in background thread
     def run_scheduler():
