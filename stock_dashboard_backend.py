@@ -2602,6 +2602,13 @@ def save_checkpoint_to_supabase(data, checkpoint_id=None):
         print(f"     - ID: {checkpoint_data['id']}", flush=True)
         print(f"     - Stage: {checkpoint_data['stage']}", flush=True)
         print(f"     - Data size: {len(checkpoint_data['data'])} bytes", flush=True)
+        # Debug: Show downloaded_stocks count if present
+        if "downloaded_stocks" in data:
+            downloaded_count = len(data.get("downloaded_stocks", []))
+            print(f"     - Downloaded stocks in data: {downloaded_count}", flush=True)
+            if downloaded_count > 0:
+                sample_stocks = data.get("downloaded_stocks", [])[:5]
+                print(f"     - Sample stocks: {', '.join(sample_stocks)}", flush=True)
         
         # Delete existing record first (if any) to avoid conflicts
         try:
@@ -2694,6 +2701,16 @@ def load_checkpoint_from_supabase(checkpoint_id=None):
             
             # Check if data is a string (JSON) or already a dict
             data_value = checkpoint_record.get("data")
+            
+            # Debug: Log raw data preview to verify structure
+            if isinstance(data_value, str):
+                try:
+                    preview_data = json.loads(data_value)
+                    if "downloaded_stocks" in preview_data:
+                        downloaded_count = len(preview_data.get("downloaded_stocks", []))
+                        print(f"  🔍 Checkpoint contains {downloaded_count} downloaded stocks", flush=True)
+                except:
+                    pass
             if isinstance(data_value, str):
                 # Parse JSON string back to dict
                 try:
@@ -3057,13 +3074,25 @@ def run_analysis_logic(force_refresh=False):
                     print(f"  ⚠ Cached data for {ticker} not found or empty, will re-download", flush=True)
                     stocks_to_redownload.append(ticker)  # Add to re-download list
             
-            # Filter out already downloaded stocks that have valid cache files
-            # But include stocks that need to be re-downloaded (cache missing)
-            successfully_loaded_stocks = set(batch_data.keys())
-            remaining_tickers = [t for t in all_tickers if t not in successfully_loaded_stocks]
-            # Add stocks that need to be re-downloaded back to the list
+            # IMPORTANT: Filter out stocks that are in the checkpoint's downloaded_stocks list
+            # Even if their cache files are missing, they were downloaded before
+            # We only need to re-download them to get the data for processing, but we should
+            # exclude them from the "remaining" count calculation
+            checkpoint_downloaded_set = set(downloaded_stocks)  # Stocks in checkpoint
+            successfully_loaded_stocks = set(batch_data.keys())  # Stocks with valid cache files
+            
+            # Calculate remaining: stocks NOT in checkpoint AND NOT successfully loaded
+            # Then add stocks that need re-download (they're in checkpoint but cache missing)
+            remaining_tickers = [t for t in all_tickers if t not in checkpoint_downloaded_set and t not in successfully_loaded_stocks]
+            # Add stocks that need to be re-downloaded (they're in checkpoint but cache is missing)
             remaining_tickers.extend(stocks_to_redownload)
             remaining_tickers = list(set(remaining_tickers))  # Remove duplicates
+            
+            print(f"  📊 Checkpoint analysis:", flush=True)
+            print(f"     - Stocks in checkpoint: {len(downloaded_stocks)}", flush=True)
+            print(f"     - Stocks with valid cache: {len(successfully_loaded_stocks)}", flush=True)
+            print(f"     - Stocks needing re-download: {len(stocks_to_redownload)}", flush=True)
+            print(f"     - Stocks never downloaded: {len([t for t in all_tickers if t not in checkpoint_downloaded_set])}", flush=True)
             print(f"  📥 Remaining stocks to download: {len(remaining_tickers)}/{len(all_tickers)} (including {len(stocks_to_redownload)} that need re-download)", flush=True)
             
             if not remaining_tickers:
@@ -3181,10 +3210,20 @@ def run_analysis_logic(force_refresh=False):
                             }
                             try:
                                 save_cache(partial_response, is_partial=True, stage="downloading", processed_tickers=all_downloaded)
-                                if idx % 5 == 0:  # Only print message every 5 stocks to reduce log spam
-                                    print(f"  💾 Checkpoint saved ({len(all_downloaded)} stocks in checkpoint)", flush=True)
+                                # Always print checkpoint save to verify it's working
+                                print(f"  💾 Checkpoint saved: {ticker} added ({len(all_downloaded)} total stocks in checkpoint)", flush=True)
+                                # Verify the checkpoint was saved correctly
+                                verify_checkpoint = load_cache()
+                                if verify_checkpoint and verify_checkpoint.get("downloaded_stocks"):
+                                    verify_count = len(verify_checkpoint.get("downloaded_stocks", []))
+                                    if verify_count != len(all_downloaded):
+                                        print(f"  ⚠ WARNING: Checkpoint mismatch! Saved {len(all_downloaded)} but loaded {verify_count}", flush=True)
+                                    else:
+                                        print(f"  ✓ Verified: Checkpoint contains {verify_count} stocks", flush=True)
                             except Exception as e:
                                 print(f"  ⚠ Failed to save checkpoint: {e}", flush=True)
+                                import traceback
+                                traceback.print_exc()
                             
                             break  # Success, move to next ticker
                         else:
