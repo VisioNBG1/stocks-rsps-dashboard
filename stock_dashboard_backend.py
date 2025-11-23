@@ -3333,23 +3333,47 @@ def run_analysis_logic(force_refresh=False):
             # Reset resume_from_stage so processing continues
             resume_from_stage = None
         elif resume_from_stage == "downloading":
-            # Resume from downloading stage - get downloaded stocks from checkpoint (primary) and Supabase (verification)
+            # Resume from downloading stage - use Supabase as source of truth (it's persistent)
             date_str = datetime.now().strftime("%Y-%m-%d")
             
-            # Load from checkpoint first (this is the source of truth)
-            cached_data = load_cache()
-            downloaded_stocks = cached_data.get("downloaded_stocks", []) if cached_data else []
-            
-            # Also check Supabase to see what's actually stored there
+            # Check Supabase first (this is the persistent source of truth)
             supabase_stocks = get_downloaded_stocks_from_supabase(date_str)
             
-            # Use checkpoint as primary source, but log discrepancy if any
-            if downloaded_stocks and supabase_stocks:
-                checkpoint_set = set(downloaded_stocks)
-                supabase_set = set(supabase_stocks)
-                missing_in_supabase = checkpoint_set - supabase_set
-                if missing_in_supabase:
-                    print(f"  ⚠ {len(missing_in_supabase)} stocks in checkpoint but not in Supabase (will re-download)", flush=True)
+            # Also check checkpoint for reference
+            cached_data = load_cache()
+            checkpoint_stocks = cached_data.get("downloaded_stocks", []) if cached_data else []
+            if not isinstance(checkpoint_stocks, list):
+                checkpoint_stocks = []
+            checkpoint_stocks = list(set(checkpoint_stocks))
+            
+            # Use Supabase as primary source (it's persistent across deployments)
+            # If Supabase has more stocks than checkpoint, Supabase is more accurate
+            if len(supabase_stocks) > len(checkpoint_stocks):
+                print(f"  📊 Found {len(supabase_stocks)} downloaded stocks in Supabase for {date_str}", flush=True)
+                print(f"  ⚠ Checkpoint only has {len(checkpoint_stocks)} stocks - using Supabase as source of truth", flush=True)
+                downloaded_stocks = supabase_stocks
+                # Update checkpoint to match Supabase
+                try:
+                    updated_checkpoint = cached_data.copy() if cached_data else {}
+                    updated_checkpoint["downloaded_stocks"] = supabase_stocks
+                    updated_checkpoint["_partial"] = True
+                    updated_checkpoint["_stage"] = "downloading"
+                    save_cache(updated_checkpoint, is_partial=True, stage="downloading", processed_tickers=supabase_stocks)
+                    print(f"  ✓ Updated checkpoint to match Supabase ({len(supabase_stocks)} stocks)", flush=True)
+                except Exception as update_error:
+                    print(f"  ⚠ Could not update checkpoint: {update_error}", flush=True)
+            elif checkpoint_stocks and not supabase_stocks:
+                # Checkpoint has stocks but Supabase is empty - use checkpoint
+                print(f"  ⚠ Supabase is empty but checkpoint has {len(checkpoint_stocks)} stocks - using checkpoint", flush=True)
+                downloaded_stocks = checkpoint_stocks
+            elif len(supabase_stocks) == len(checkpoint_stocks):
+                # Both match - use Supabase (more reliable)
+                downloaded_stocks = supabase_stocks
+                print(f"  ✓ Checkpoint and Supabase match: {len(downloaded_stocks)} stocks", flush=True)
+            else:
+                # Supabase has fewer - use Supabase (it's the persistent source)
+                downloaded_stocks = supabase_stocks
+                print(f"  ⚠ Supabase has {len(supabase_stocks)} stocks, checkpoint has {len(checkpoint_stocks)} - using Supabase", flush=True)
             
             # Ensure downloaded_stocks is a list and remove duplicates
             if not isinstance(downloaded_stocks, list):
