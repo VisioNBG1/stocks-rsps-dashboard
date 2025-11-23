@@ -3286,6 +3286,52 @@ def run_analysis_logic(force_refresh=False):
         if resume_from_stage in ["stock_analysis_complete", "ratio_analysis_complete"]:
             print("  ⏭ Skipping download (resuming from checkpoint)...", flush=True)
             batch_data = {}  # Empty batch_data since we're skipping download
+        elif resume_from_stage == "stock_analysis":
+            # Resume from stock_analysis stage - load all downloaded stocks from Supabase
+            print("  🔄 Resuming from stock_analysis stage - loading downloaded stocks from Supabase...", flush=True)
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            
+            # Load checkpoint to get list of downloaded stocks
+            cached_data = load_cache()
+            downloaded_stocks = cached_data.get("downloaded_stocks", []) if cached_data else []
+            
+            # If checkpoint doesn't have downloaded_stocks, try to get from Supabase
+            if not downloaded_stocks:
+                downloaded_stocks = get_downloaded_stocks_from_supabase(date_str)
+                print(f"  ℹ Got {len(downloaded_stocks)} stocks from Supabase (checkpoint had none)", flush=True)
+            
+            if not isinstance(downloaded_stocks, list):
+                downloaded_stocks = []
+            downloaded_stocks = list(set(downloaded_stocks))  # Remove duplicates
+            
+            print(f"  📋 Loading {len(downloaded_stocks)} downloaded stocks from Supabase...", flush=True)
+            
+            # Load all downloaded stocks from Supabase
+            batch_data = {}
+            for ticker in downloaded_stocks:
+                try:
+                    ticker_data = load_stock_data_from_supabase(ticker, "downloaded", date_str)
+                    if ticker_data is not None:
+                        if isinstance(ticker_data, pd.DataFrame) and not ticker_data.empty:
+                            if len(ticker_data.columns) >= 4:
+                                batch_data[ticker] = ticker_data
+                                print(f"  ✓ Loaded {ticker} from Supabase ({len(ticker_data)} rows)", flush=True)
+                            else:
+                                print(f"  ⚠ {ticker} has invalid structure, skipping", flush=True)
+                        elif isinstance(ticker_data, dict):
+                            try:
+                                df = pd.DataFrame(ticker_data)
+                                if not df.empty and len(df.columns) >= 4:
+                                    batch_data[ticker] = df
+                                    print(f"  ✓ Loaded {ticker} from Supabase (dict->DataFrame)", flush=True)
+                            except:
+                                print(f"  ⚠ Could not convert {ticker} dict to DataFrame, skipping", flush=True)
+                except Exception as e:
+                    print(f"  ⚠ Failed to load {ticker} from Supabase: {e}, skipping", flush=True)
+            
+            print(f"  ✓ Loaded {len(batch_data)} stocks from Supabase, ready for z-scoring", flush=True)
+            # Reset resume_from_stage so processing continues
+            resume_from_stage = None
         elif resume_from_stage == "downloading":
             # Resume from downloading stage - get downloaded stocks from checkpoint (primary) and Supabase (verification)
             date_str = datetime.now().strftime("%Y-%m-%d")
