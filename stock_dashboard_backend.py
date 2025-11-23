@@ -4623,10 +4623,15 @@ def run_analysis_logic(force_refresh=False):
                         "total_stocks": len(ratio_scores)
                     }
                     # Save as a special record with ticker="RATIO_ANALYSIS_SUMMARY"
-                    save_stock_data_to_supabase("RATIO_ANALYSIS_SUMMARY", "ratio_analysis", ratio_summary, date_str)
-                    print(f"  💾 Saved ratio analysis summary to Supabase", flush=True)
+                    save_success = save_stock_data_to_supabase("RATIO_ANALYSIS_SUMMARY", "ratio_analysis", ratio_summary, date_str)
+                    if save_success:
+                        print(f"  💾 Saved ratio analysis summary to Supabase", flush=True)
+                    else:
+                        print(f"  ⚠ Failed to save ratio analysis summary to Supabase (returned False)", flush=True)
                 except Exception as save_error:
                     print(f"  ⚠ Could not save ratio analysis summary to Supabase: {save_error}", flush=True)
+                    import traceback
+                    traceback.print_exc()
                 
                 # Save partial results after ratio analysis (checkpoint)
                 partial_response = {
