@@ -142,10 +142,10 @@ CONFIG = {
 #         "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA", "AVGO", "ORCL",
 #         "AMD", "INTC", "CRM", "ADBE", "CSCO", "TXN", "QCOM", "NOW", "AMAT", "MU",
 #         "LRCX", "KLAC", "SNPS", "CDNS", "ANSS", "INTU", "FTNT", "PANW", "CRWD", "ZS",
-#         "NET", "DDOG", "TEAM", "DOCN", "MDB", "SNOW", "PLTR", "RPD", "ESTC", "SPLK"
+#         "NET", "DDOG", "TEAM", "DOCN", "MDB", "SNOW", "PLTR", "RPD", "ESTC"
 #     ],
 #     "Energy": [
-#         "XOM", "CVX", "SLB", "MRO", "EOG", "COP", "MPC", "PSX", "VLO", "HAL",
+#         "XOM", "CVX", "SLB", "EOG", "COP", "MPC", "PSX", "VLO", "HAL",
 #         "OXY", "DVN", "FANG", "CTRA", "APA", "HES", "BKR", "NOV", "FTI", "RIG",
 #         "HP", "LBRT", "NBR", "PTEN", "WFRD", "VTLE", "SM", "CIVI", "MGY", "MTDR"
 #     ],
@@ -173,7 +173,7 @@ CONFIG = {
 #     ],
 #     "Financials": [
 #         "JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "SCHW", "AXP", "COF",
-#         "USB", "PNC", "TFC", "BK", "STT", "BEN", "IVZ", "ETFC", "AMTD", "HOOD",
+#         "USB", "PNC", "TFC", "BK", "STT", "BEN", "IVZ", "AMTD", "HOOD",
 #         "V", "MA", "PYPL", "FIS", "FISV", "GPN", "FLYW", "AFRM", "UPST", "SOFI"
 #     ],
 #     "Consumer Discretionary": [
@@ -184,7 +184,7 @@ CONFIG = {
 #     "Real Estate": [
 #         "AMT", "PLD", "EQIX", "PSA", "WELL", "VICI", "SPG", "O", "DLR", "EXPI",
 #         "CBRE", "JLL", "CWK", "REXR", "STAG", "FR", "BRX", "BXP", "KIM", "REG",
-#         "MAC", "SLG", "VTR", "PEAK", "CTRE", "HTA", "DOC", "MPW", "OHI", "GMRE"
+#         "MAC", "SLG", "VTR", "PEAK", "CTRE", "DOC", "MPW", "OHI", "GMRE"
 #     ],
 #     "Materials": [
 #         "LIN", "APD", "ECL", "SHW", "PPG", "DD", "DOW", "FCX", "NEM", "VALE",
@@ -390,10 +390,10 @@ SECTORS = {
         "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA", "AVGO", "ORCL",
         "AMD", "INTC", "CRM", "ADBE", "CSCO", "TXN", "QCOM", "NOW", "AMAT", "MU",
         "LRCX", "KLAC", "SNPS", "CDNS", "ANSS", "INTU", "FTNT", "PANW", "CRWD", "ZS",
-        "NET", "DDOG", "TEAM", "DOCN", "MDB", "SNOW", "PLTR", "RPD", "ESTC", "SPLK"
+        "NET", "DDOG", "TEAM", "DOCN", "MDB", "SNOW", "PLTR", "RPD", "ESTC"
     ],
     "Energy": [
-        "XOM", "CVX", "SLB", "MRO", "EOG", "COP", "MPC", "PSX", "VLO", "HAL",
+        "XOM", "CVX", "SLB", "EOG", "COP", "MPC", "PSX", "VLO", "HAL",
         "OXY", "DVN", "FANG", "CTRA", "APA", "HES", "BKR", "NOV", "FTI", "RIG",
         "HP", "LBRT", "NBR", "PTEN", "WFRD", "VTLE", "SM", "CIVI", "MGY", "MTDR"
     ],
@@ -421,7 +421,7 @@ SECTORS = {
     ],
     "Financials": [
         "JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "SCHW", "AXP", "COF",
-        "USB", "PNC", "TFC", "BK", "STT", "BEN", "IVZ", "ETFC", "AMTD", "HOOD",
+        "USB", "PNC", "TFC", "BK", "STT", "BEN", "IVZ", "AMTD", "HOOD",
         "V", "MA", "PYPL", "FIS", "FISV", "GPN", "FLYW", "AFRM", "UPST", "SOFI"
     ],
     "Consumer Discretionary": [
@@ -432,7 +432,7 @@ SECTORS = {
     "Real Estate": [
         "AMT", "PLD", "EQIX", "PSA", "WELL", "VICI", "SPG", "O", "DLR", "EXPI",
         "CBRE", "JLL", "CWK", "REXR", "STAG", "FR", "BRX", "BXP", "KIM", "REG",
-        "MAC", "SLG", "VTR", "PEAK", "CTRE", "HTA", "DOC", "MPW", "OHI", "GMRE"
+        "MAC", "SLG", "VTR", "PEAK", "CTRE", "DOC", "MPW", "OHI", "GMRE"
     ],
     "Materials": [
         "LIN", "APD", "ECL", "SHW", "PPG", "DD", "DOW", "FCX", "NEM", "VALE",
@@ -2750,6 +2750,115 @@ def load_checkpoint_from_supabase(checkpoint_id=None):
         traceback.print_exc()
         return None
 
+def save_stock_data_to_supabase(ticker, stage, data, date_str=None):
+    """Save stock data to Supabase stock_data table"""
+    if not supabase_client:
+        return False
+    
+    try:
+        if date_str is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        # Convert DataFrame to JSON if needed
+        if isinstance(data, pd.DataFrame):
+            # Convert DataFrame to dict with proper date handling
+            data_dict = {
+                "columns": list(data.columns),
+                "index": [str(idx) for idx in data.index],
+                "data": data.values.tolist()
+            }
+        elif isinstance(data, dict):
+            data_dict = data
+        else:
+            # Try to serialize other types
+            data_dict = json.loads(json.dumps(data, default=str))
+        
+        stock_data_record = {
+            "ticker": ticker,
+            "stage": stage,  # 'downloaded', 'z_scored', 'ratio_analyzed', 'backtested'
+            "date_str": date_str,
+            "data": data_dict
+        }
+        
+        # Use upsert (insert or update) to handle duplicates
+        result = supabase_client.table("stock_data").upsert(
+            stock_data_record,
+            on_conflict="ticker,stage,date_str"
+        ).execute()
+        
+        if result.data and len(result.data) > 0:
+            return True
+        else:
+            print(f"  ⚠ Failed to save stock data for {ticker} (stage: {stage})", flush=True)
+            return False
+    except Exception as e:
+        print(f"  ⚠ Error saving stock data for {ticker} (stage: {stage}): {e}", flush=True)
+        return False
+
+def load_stock_data_from_supabase(ticker, stage, date_str=None):
+    """Load stock data from Supabase stock_data table"""
+    if not supabase_client:
+        return None
+    
+    try:
+        if date_str is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        result = supabase_client.table("stock_data").select("*").eq("ticker", ticker).eq("stage", stage).eq("date_str", date_str).execute()
+        
+        if result.data and len(result.data) > 0:
+            record = result.data[0]
+            data_dict = record.get("data", {})
+            
+            # Convert back to DataFrame if it was stored as one
+            if isinstance(data_dict, dict) and "columns" in data_dict and "data" in data_dict:
+                df = pd.DataFrame(
+                    data_dict["data"],
+                    columns=data_dict["columns"],
+                    index=pd.to_datetime(data_dict["index"]) if "index" in data_dict else None
+                )
+                return df
+            else:
+                return data_dict
+        else:
+            return None
+    except Exception as e:
+        print(f"  ⚠ Error loading stock data for {ticker} (stage: {stage}): {e}", flush=True)
+        return None
+
+def get_downloaded_stocks_from_supabase(date_str=None):
+    """Get list of all stocks that have been downloaded (stored in Supabase)"""
+    if not supabase_client:
+        return []
+    
+    try:
+        if date_str is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        result = supabase_client.table("stock_data").select("ticker").eq("stage", "downloaded").eq("date_str", date_str).execute()
+        
+        if result.data:
+            return list(set([record["ticker"] for record in result.data]))
+        else:
+            return []
+    except Exception as e:
+        print(f"  ⚠ Error getting downloaded stocks from Supabase: {e}", flush=True)
+        return []
+
+def clear_supabase_checkpoints():
+    """Clear all checkpoints from Supabase (use with caution!)"""
+    if not supabase_client:
+        print("  ⚠ Supabase client not initialized", flush=True)
+        return False
+    
+    try:
+        result = supabase_client.table("checkpoints").delete().neq("id", "never_delete").execute()
+        print(f"  ✓ Cleared all checkpoints from Supabase", flush=True)
+        return True
+    except Exception as e:
+        print(f"  ⚠ Error clearing checkpoints: {e}", flush=True)
+        return False
+
 def trigger_auto_redeploy(stage):
     """
     Attempt to trigger auto-redeploy via Render API.
@@ -3052,9 +3161,15 @@ def run_analysis_logic(force_refresh=False):
             print("  ⏭ Skipping download (resuming from checkpoint)...", flush=True)
             batch_data = {}  # Empty batch_data since we're skipping download
         elif resume_from_stage == "downloading":
-            # Resume from downloading stage - skip already downloaded stocks
-            cached_data = load_cache()
-            downloaded_stocks = cached_data.get("downloaded_stocks", []) if cached_data else []
+            # Resume from downloading stage - get downloaded stocks from Supabase (primary) and checkpoint (fallback)
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            downloaded_stocks = get_downloaded_stocks_from_supabase(date_str)
+            
+            # Fallback to checkpoint if Supabase is empty
+            if not downloaded_stocks:
+                cached_data = load_cache()
+                downloaded_stocks = cached_data.get("downloaded_stocks", []) if cached_data else []
+            
             # Ensure downloaded_stocks is a list and remove duplicates
             if not isinstance(downloaded_stocks, list):
                 downloaded_stocks = []
@@ -3062,16 +3177,39 @@ def run_analysis_logic(force_refresh=False):
             print(f"  🔄 Resuming download - {len(downloaded_stocks)} stocks already downloaded", flush=True)
             print(f"  📋 Already downloaded: {', '.join(sorted(downloaded_stocks)[:10])}{'...' if len(downloaded_stocks) > 10 else ''}", flush=True)
             
-            # Load already downloaded stocks from cache files
+            # Load already downloaded stocks from Supabase (primary) and local cache (fallback)
             batch_data = {}
-            stocks_to_redownload = []  # Stocks that were marked as downloaded but cache is missing
+            stocks_to_redownload = []  # Stocks that were marked as downloaded but data is missing
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            
             for ticker in downloaded_stocks:
+                # Try Supabase first (persistent storage)
+                ticker_data = load_stock_data_from_supabase(ticker, "downloaded", date_str)
+                if ticker_data is not None:
+                    if isinstance(ticker_data, pd.DataFrame) and not ticker_data.empty:
+                        batch_data[ticker] = ticker_data
+                        print(f"  ✓ Loaded {ticker} from Supabase ({len(ticker_data)} rows)", flush=True)
+                        continue
+                    elif isinstance(ticker_data, dict):
+                        # Convert dict back to DataFrame if needed
+                        try:
+                            df = pd.DataFrame(ticker_data)
+                            if not df.empty:
+                                batch_data[ticker] = df
+                                print(f"  ✓ Loaded {ticker} from Supabase ({len(df)} rows)", flush=True)
+                                continue
+                        except:
+                            pass
+                
+                # Fallback to local cache
                 ticker_data = get_cached_stock_data(ticker)
                 if ticker_data is not None and not ticker_data.empty:
                     batch_data[ticker] = ticker_data
                     print(f"  ✓ Loaded cached data for {ticker} ({len(ticker_data)} rows)", flush=True)
+                    # Also save to Supabase for future use
+                    save_stock_data_to_supabase(ticker, "downloaded", ticker_data, date_str)
                 else:
-                    print(f"  ⚠ Cached data for {ticker} not found or empty, will re-download", flush=True)
+                    print(f"  ⚠ Data for {ticker} not found in Supabase or cache, will re-download", flush=True)
                     stocks_to_redownload.append(ticker)  # Add to re-download list
             
             # IMPORTANT: Filter out stocks that are in the checkpoint's downloaded_stocks list
@@ -3183,6 +3321,11 @@ def run_analysis_logic(force_refresh=False):
                             batch_data[ticker] = ticker_data
                             print(f"    ✓ {ticker} downloaded successfully ({len(ticker_data)} rows)", flush=True)
                             download_success = True
+                            
+                            # Save to Supabase immediately (persistent storage)
+                            date_str = datetime.now().strftime("%Y-%m-%d")
+                            if save_stock_data_to_supabase(ticker, "downloaded", ticker_data, date_str):
+                                print(f"    💾 Saved {ticker} to Supabase", flush=True)
                             
                             # Update checkpoint after EVERY successful download to ensure progress is saved
                             # Merge existing downloaded_stocks with current batch_data
