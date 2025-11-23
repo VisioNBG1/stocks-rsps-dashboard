@@ -3121,6 +3121,9 @@ def run_analysis_logic(force_refresh=False):
                 print(f"  Starting to process {len(batch_data)} downloaded stocks...", flush=True)
                 sys.stdout.flush()
         
+        # Initialize results list early (needed for all code paths)
+        results = []
+        
         # Check if we should skip stock analysis (resuming from checkpoint)
         processed_tickers_from_checkpoint = []
         if resume_from_stage in ["stock_analysis_complete", "ratio_analysis_complete"]:
