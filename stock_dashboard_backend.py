@@ -4236,7 +4236,8 @@ def start_background_analysis():
         # Check if cache exists
         cached_data = load_cache()
         if cached_data:
-                        cached_data["_stage"] = actual_stage_from_supabase
+            print("\n" + "="*60, flush=True)
+            # Check if it's a complete cache or partial checkpoint
                         checkpoint_stage = actual_stage_from_supabase
                     save_cache(cached_data, is_partial=True, stage=checkpoint_stage, processed_tickers=supabase_downloaded)
                     print(f"  ✓ Checkpoint updated to match Supabase", flush=True)
