@@ -3541,6 +3541,35 @@ def run_analysis_logic(force_refresh=False):
         # Try to load from cache first (unless force refresh)
         resume_from_stage = None
         if not force_refresh:
+            # FIRST: Check Supabase to determine actual progress (source of truth)
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            supabase_downloaded = get_downloaded_stocks_from_supabase(date_str)
+            supabase_z_scored = get_z_scored_stocks_from_supabase(date_str)
+            
+            print(f"  📊 Supabase status check:", flush=True)
+            print(f"     - Downloaded stocks: {len(supabase_downloaded)}", flush=True)
+            print(f"     - Z-scored stocks: {len(supabase_z_scored)}", flush=True)
+            
+            # Determine actual stage from Supabase
+            actual_stage_from_supabase = None
+            if len(supabase_z_scored) > 0:
+                # If we have z-scored stocks, we're at least at stock_analysis stage
+                if len(supabase_z_scored) == len(supabase_downloaded):
+                    # All downloaded stocks are z-scored - might be at ratio_analysis
+                    actual_stage_from_supabase = "stock_analysis_complete"
+                else:
+                    # Some stocks z-scored but not all - still in stock_analysis
+                    actual_stage_from_supabase = "stock_analysis"
+            elif len(supabase_downloaded) > 0:
+                # Stocks downloaded but not z-scored - still in downloading or starting stock_analysis
+                actual_stage_from_supabase = "downloading"
+            else:
+                # Nothing in Supabase - fresh start
+                actual_stage_from_supabase = None
+            
+            print(f"     - Actual stage from Supabase: {actual_stage_from_supabase}", flush=True)
+            
+            # THEN: Check checkpoint
             cached_data = load_cache()
             if cached_data:
                 # Validate checkpoint: if stage is "downloading" or "stock_analysis", it's partial even if _partial is False
@@ -3550,6 +3579,25 @@ def run_analysis_logic(force_refresh=False):
                 # Invalid checkpoint detection: if stage indicates incomplete work, treat as partial
                 incomplete_stages = ["downloading", "stock_analysis", "ratio_analysis"]
                 is_actually_partial = is_partial_flag or (checkpoint_stage in incomplete_stages)
+                
+                # If Supabase shows more progress than checkpoint, use Supabase as source of truth
+                checkpoint_downloaded = cached_data.get("downloaded_stocks", [])
+                if not isinstance(checkpoint_downloaded, list):
+                    checkpoint_downloaded = []
+                checkpoint_downloaded = list(set(checkpoint_downloaded))
+                
+                if len(supabase_downloaded) > len(checkpoint_downloaded):
+                    print(f"  ⚠ Checkpoint mismatch: Supabase has {len(supabase_downloaded)} stocks, checkpoint says {len(checkpoint_downloaded)}", flush=True)
+                    print(f"  🔄 Using Supabase as source of truth and updating checkpoint...", flush=True)
+                    # Update checkpoint to match Supabase
+                    cached_data["downloaded_stocks"] = supabase_downloaded
+                    cached_data["_partial"] = True
+                    # Use actual stage from Supabase
+                    if actual_stage_from_supabase:
+                        cached_data["_stage"] = actual_stage_from_supabase
+                        checkpoint_stage = actual_stage_from_supabase
+                    save_cache(cached_data, is_partial=True, stage=checkpoint_stage, processed_tickers=supabase_downloaded)
+                    print(f"  ✓ Checkpoint updated to match Supabase", flush=True)
                 
                 # Check if it's a complete cache
                 if not is_actually_partial and "sectors" in cached_data:
