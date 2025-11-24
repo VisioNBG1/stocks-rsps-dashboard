@@ -4228,7 +4228,8 @@ def start_keepalive():
 
 # --- Background Analysis Thread ---
 def start_background_analysis():
-                    cached_data["_partial"] = True
+    """Start analysis automatically in background thread after a short delay"""
+    def run_analysis():
                     # Use actual stage from Supabase
                     if actual_stage_from_supabase:
                         cached_data["_stage"] = actual_stage_from_supabase
