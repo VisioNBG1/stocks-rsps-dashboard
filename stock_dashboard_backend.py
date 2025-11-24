@@ -4230,8 +4230,12 @@ def start_keepalive():
 def start_background_analysis():
     """Start analysis automatically in background thread after a short delay"""
     def run_analysis():
-                    # Use actual stage from Supabase
-                    if actual_stage_from_supabase:
+        # Wait 10 seconds for server to fully start
+        time.sleep(10)
+        
+        # Check if cache exists
+        cached_data = load_cache()
+        if cached_data:
                         cached_data["_stage"] = actual_stage_from_supabase
                         checkpoint_stage = actual_stage_from_supabase
                     save_cache(cached_data, is_partial=True, stage=checkpoint_stage, processed_tickers=supabase_downloaded)
