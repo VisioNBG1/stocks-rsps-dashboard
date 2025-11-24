@@ -4239,7 +4239,8 @@ def start_background_analysis():
             print("\n" + "="*60, flush=True)
             # Check if it's a complete cache or partial checkpoint
             # Validate checkpoint: if stage is "downloading" or "stock_analysis", it's partial even if _partial is False
-                    save_cache(cached_data, is_partial=True, stage=checkpoint_stage, processed_tickers=supabase_downloaded)
+            checkpoint_stage = cached_data.get("_stage", "")
+            is_partial_flag = cached_data.get("_partial", False)
                     print(f"  ✓ Checkpoint updated to match Supabase", flush=True)
                     checkpoint_updated = True
                     # Recalculate is_actually_partial after updating checkpoint
