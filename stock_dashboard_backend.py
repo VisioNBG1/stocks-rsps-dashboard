@@ -3743,6 +3743,7 @@ def run_analysis_logic(force_refresh=False):
                     checkpoint_downloaded = []
                 checkpoint_downloaded = list(set(checkpoint_downloaded))
                 
+                checkpoint_updated = False
                 if len(supabase_downloaded) > len(checkpoint_downloaded):
                     print(f"  ⚠ Checkpoint mismatch: Supabase has {len(supabase_downloaded)} stocks, checkpoint says {len(checkpoint_downloaded)}", flush=True)
                     print(f"  🔄 Using Supabase as source of truth and updating checkpoint...", flush=True)
@@ -3755,9 +3756,13 @@ def run_analysis_logic(force_refresh=False):
                         checkpoint_stage = actual_stage_from_supabase
                     save_cache(cached_data, is_partial=True, stage=checkpoint_stage, processed_tickers=supabase_downloaded)
                     print(f"  ✓ Checkpoint updated to match Supabase", flush=True)
+                    checkpoint_updated = True
+                    # Recalculate is_actually_partial after updating checkpoint
+                    incomplete_stages = ["downloading", "stock_analysis", "ratio_analysis"]
+                    is_actually_partial = True  # If we updated checkpoint, it's definitely partial
                 
-                # Check if it's a complete cache
-                if not is_actually_partial and "sectors" in cached_data:
+                # Check if it's a complete cache (only if checkpoint wasn't just updated)
+                if not checkpoint_updated and not is_actually_partial and "sectors" in cached_data:
                     elapsed = time.time() - start_time
                     print(f"✓ Loading data from cache... (took {elapsed:.2f}s)", flush=True)
                     analysis_progress["status"] = "complete"
