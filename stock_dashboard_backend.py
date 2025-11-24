@@ -4285,53 +4285,69 @@ def run_analysis_logic(force_refresh=False):
             
             # If resuming from stock_analysis, load already processed results AND downloaded stock data
             if checkpoint_stage == "stock_analysis" and cached_data and "sectors" in cached_data:
-                print(f"  🔄 Resuming stock_analysis - loading already processed results from checkpoint...", flush=True)
-                output_sectors = cached_data["sectors"]
-                # Reconstruct results from sectors
-                for sector in output_sectors:
-                    for stock in sector.get("stocks", []):
-                        ticker = stock["ticker"]
-                        results.append({
-                            "sector": sector["name"],
-                            "ticker": ticker,
-                            "z_avg": stock["z"],
-                            "avg_score": stock["avg_score"]
-                        })
-                        processed_tickers_from_checkpoint.append(ticker)
-                print(f"  ✓ Loaded {len(results)} already processed stocks from checkpoint", flush=True)
+                print(f"  🔄 Resuming stock_analysis - loading already processed results...", flush=True)
                 
-                # Also check Supabase for z-scored stocks that might not be in checkpoint
+                # CRITICAL: Use Supabase as source of truth for which stocks are actually z-scored
                 try:
                     date_str = datetime.now().strftime("%Y-%m-%d")
                     supabase_z_scored = get_z_scored_stocks_from_supabase(date_str)
-                    checkpoint_tickers_set = set(processed_tickers_from_checkpoint)
-                    supabase_tickers_set = set(supabase_z_scored)
+                    print(f"  📊 Found {len(supabase_z_scored)} z-scored stocks in Supabase (source of truth)", flush=True)
                     
-                    # Find stocks in Supabase but not in checkpoint
-                    missing_from_checkpoint = supabase_tickers_set - checkpoint_tickers_set
-                    if missing_from_checkpoint:
-                        print(f"  ℹ Found {len(missing_from_checkpoint)} z-scored stocks in Supabase not in checkpoint, loading them...", flush=True)
-                        for ticker in missing_from_checkpoint:
-                            z_data = load_z_score_from_supabase(ticker, date_str)
-                            if z_data:
-                                # Find sector for this ticker
-                                sector_name = None
-                                for sec_name, sec_tickers in SECTORS.items():
-                                    if ticker in sec_tickers:
-                                        sector_name = sec_name
-                                        break
-                                
-                                if sector_name:
-                                    results.append({
-                                        "sector": sector_name,
-                                        "ticker": ticker,
-                                        "z_avg": z_data.get("z_avg", 0.0),
-                                        "avg_score": z_data.get("avg_score", 0.0)
-                                    })
-                                    processed_tickers_from_checkpoint.append(ticker)
-                                    print(f"  ✓ Loaded {ticker} z-scores from Supabase", flush=True)
+                    # Load all z-scored stocks from Supabase
+                    for ticker in supabase_z_scored:
+                        z_data = load_z_score_from_supabase(ticker, date_str)
+                        if z_data:
+                            # Find sector for this ticker
+                            sector_name = None
+                            for sec_name, sec_tickers in SECTORS.items():
+                                if ticker in sec_tickers:
+                                    sector_name = sec_name
+                                    break
+                            
+                            if sector_name:
+                                results.append({
+                                    "sector": sector_name,
+                                    "ticker": ticker,
+                                    "z_avg": z_data.get("z_avg", 0.0),
+                                    "avg_score": z_data.get("avg_score", 0.0)
+                                })
+                                processed_tickers_from_checkpoint.append(ticker)
+                    
+                    print(f"  ✓ Loaded {len(results)} z-scored stocks from Supabase", flush=True)
+                    
+                    # Also try to load from checkpoint as backup (in case Supabase is missing some)
+                    output_sectors = cached_data.get("sectors", [])
+                    checkpoint_tickers_set = set(processed_tickers_from_checkpoint)
+                    for sector in output_sectors:
+                        for stock in sector.get("stocks", []):
+                            ticker = stock["ticker"]
+                            if ticker not in checkpoint_tickers_set:
+                                # Not in Supabase, add from checkpoint
+                                results.append({
+                                    "sector": sector["name"],
+                                    "ticker": ticker,
+                                    "z_avg": stock.get("z", 0.0),
+                                    "avg_score": stock.get("avg_score", 0.0)
+                                })
+                                processed_tickers_from_checkpoint.append(ticker)
+                                print(f"  ℹ Added {ticker} from checkpoint (not in Supabase)", flush=True)
+                    
+                    print(f"  ✓ Total loaded: {len(results)} stocks ({len(supabase_z_scored)} from Supabase, {len(results) - len(supabase_z_scored)} from checkpoint)", flush=True)
                 except Exception as supabase_error:
-                    print(f"  ⚠ Could not load z-scores from Supabase: {supabase_error}", flush=True)
+                    print(f"  ⚠ Could not load z-scores from Supabase, falling back to checkpoint: {supabase_error}", flush=True)
+                    # Fallback to checkpoint
+                    output_sectors = cached_data["sectors"]
+                    for sector in output_sectors:
+                        for stock in sector.get("stocks", []):
+                            ticker = stock["ticker"]
+                            results.append({
+                                "sector": sector["name"],
+                                "ticker": ticker,
+                                "z_avg": stock["z"],
+                                "avg_score": stock["avg_score"]
+                            })
+                            processed_tickers_from_checkpoint.append(ticker)
+                    print(f"  ✓ Loaded {len(results)} already processed stocks from checkpoint (fallback)", flush=True)
                 
                 # CRITICAL: Load already downloaded stock data from Supabase so we don't re-download
                 print(f"  🔄 Loading already downloaded stock data from Supabase...", flush=True)
@@ -4415,7 +4431,7 @@ def run_analysis_logic(force_refresh=False):
                 sys.stdout.flush()
                 # Sort tickers within sector for determinism
                 for ticker in sorted(tickers):
-                    # Skip if already processed (resuming from checkpoint)
+                    # Check if already processed (resuming from checkpoint)
                     if ticker in processed_tickers_from_checkpoint:
                         # Check if z-score exists in Supabase and load it
                         z_data = load_z_score_from_supabase(ticker, date_str)
@@ -4428,9 +4444,11 @@ def run_analysis_logic(force_refresh=False):
                                 "avg_score": z_data.get("avg_score", 0.0)
                             })
                             print(f"  ✓ Loaded {ticker} z-scores from Supabase (already processed)", flush=True)
+                            continue  # Skip processing if z-score found
                         else:
-                            print(f"  ⏭ Skipping {ticker} (already processed in checkpoint, no z-score in Supabase)", flush=True)
-                        continue
+                            # Checkpoint says processed but no z-score in Supabase - process it anyway
+                            print(f"  ⚠ {ticker} marked as processed in checkpoint but no z-score in Supabase - will process", flush=True)
+                            # Don't continue - let it fall through to processing
                     
                     # Check timeout before processing each ticker
                     if check_timeout_and_save_checkpoint("stock_analysis", {"sectors": []}, processed_tickers):
