@@ -3733,114 +3733,450 @@ def save_cache(data, is_partial=False, stage=None, processed_tickers=None):
 
 def run_analysis_logic(force_refresh=False):
     """
-    Core analysis logic that can be called from HTTP endpoint or background thread.
-    Returns the response data dictionary.
+    Simplified analysis logic that checks Supabase directly (no checkpoints).
+    Uses unified 14-minute timer that continues across stage transitions.
+    Skips completed stages automatically.
     """
-    global analysis_progress, analysis_lock  # Declare global at function level
+    global analysis_progress, analysis_lock
     import time
     import sys
+    from datetime import datetime, timedelta
     
     # Check if analysis is already running
     if not analysis_lock.acquire(blocking=False):
-        # Analysis already running, return current progress
         if analysis_progress["status"] in ["downloading", "analyzing", "ratio_analysis", "backtesting"]:
             raise Exception("Analysis already in progress. Please wait for it to complete.")
-        # If not running, try to acquire lock
         analysis_lock.acquire()
     
     try:
-        start_time = time.time()
-        # RENDER FREE PLAN TIMEOUT: 15 minutes = 900 seconds
-        # Save checkpoint at 14 minutes (840 seconds) to allow time for save and graceful exit
+        # Unified timer that continues across all stages
+        analysis_start_time = time.time()
         RENDER_TIMEOUT_SECONDS = 840  # 14 minutes
-        checkpoint_saved = False
+        timeout_triggered = False
         
-        # Force flush to ensure logs appear immediately
+        def check_timeout():
+            """Check if we've hit the 14-minute timeout"""
+            nonlocal timeout_triggered
+            elapsed = time.time() - analysis_start_time
+            if elapsed >= RENDER_TIMEOUT_SECONDS and not timeout_triggered:
+                timeout_triggered = True
+                print(f"\n{'='*60}", flush=True)
+                print(f"⚠ TIMEOUT: {elapsed:.1f}s elapsed (limit: {RENDER_TIMEOUT_SECONDS}s)", flush=True)
+                print(f"🔄 Triggering auto-redeploy to continue...", flush=True)
+                print(f"{'='*60}\n", flush=True)
+                try:
+                    trigger_auto_redeploy("timeout")
+                except:
+                    pass
+                raise Exception("TIMEOUT: Auto-redeploy triggered, will resume on next deployment")
+            return timeout_triggered
+        
+        # Initialize
         print(f"\n{'='*60}", flush=True)
-        print(f"Received request at /analyze endpoint (PID: {os.getpid()})...", flush=True)
-        print(f"⚠ RENDER FREE PLAN: Will save checkpoint at {RENDER_TIMEOUT_SECONDS}s (14 minutes)", flush=True)
+        print(f"🚀 Starting analysis (PID: {os.getpid()})...", flush=True)
+        print(f"⚠ RENDER FREE PLAN: Will auto-redeploy at {RENDER_TIMEOUT_SECONDS}s (14 minutes)", flush=True)
         print(f"{'='*60}", flush=True)
-        sys.stdout.flush()
         
-        # Initialize progress tracking
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        all_tickers = get_all_stock_tickers()
+        
+        # Initialize progress
         analysis_progress = {
-            "status": "downloading",
-            "stage": "Initializing",
+            "status": "initializing",
+            "stage": "Checking Supabase",
             "current": 0,
-            "total": 0,
-            "message": "Starting analysis...",
-            "start_time": time.time(),
+            "total": len(all_tickers),
+            "message": "Checking current progress...",
+            "start_time": analysis_start_time,
             "last_update": time.time(),
             "results": None,
             "error": None
         }
         
-        def check_timeout_and_save_checkpoint(current_stage, current_data=None, processed_tickers=None):
-            """Check if we've hit the timeout and save checkpoint if needed"""
-            nonlocal checkpoint_saved
-            elapsed = time.time() - start_time
-            if elapsed >= RENDER_TIMEOUT_SECONDS and not checkpoint_saved:
-                checkpoint_saved = True
-                print(f"\n{'='*60}", flush=True)
-                print(f"⚠ TIMEOUT APPROACHING: {elapsed:.1f}s elapsed (limit: {RENDER_TIMEOUT_SECONDS}s)", flush=True)
-                print(f"💾 Saving checkpoint at stage: {current_stage}", flush=True)
-                print(f"{'='*60}\n", flush=True)
-                
-                # Prepare checkpoint data
-                checkpoint_data = current_data if current_data else {}
-                checkpoint_data["_checkpoint_elapsed"] = elapsed
-                checkpoint_data["_checkpoint_timestamp"] = datetime.now().isoformat()
-                
-                # Save checkpoint
-                save_cache(checkpoint_data, is_partial=True, stage=current_stage, processed_tickers=processed_tickers)
-                
-                # Try to trigger auto-redeploy by updating a trigger file
-                try:
-                    trigger_auto_redeploy(current_stage)
-                except Exception as e:
-                    print(f"  ⚠ Could not trigger auto-redeploy: {e}", flush=True)
-                    print(f"  💡 Manual redeploy: Go to Render dashboard and click 'Manual Deploy'", flush=True)
-                
-                print(f"\n✓ Checkpoint saved successfully. Exiting gracefully...", flush=True)
-                print(f"🔄 Next deployment will resume from: {current_stage}", flush=True)
-                sys.stdout.flush()
-                
-                # Return True to indicate checkpoint was saved
-                return True
-            return False
+        # Check Supabase directly to determine current stage (NO CHECKPOINTS)
+        print(f"\n📊 Checking Supabase for current progress...", flush=True)
+        current_stage = get_current_stage_from_supabase(date_str, all_tickers)
+        print(f"  Current stage: {current_stage}", flush=True)
         
-        # Try to load from cache first (unless force refresh)
-        resume_from_stage = None
-        if not force_refresh:
-            # FIRST: Check Supabase to determine actual progress (source of truth)
-            date_str = datetime.now().strftime("%Y-%m-%d")
-            supabase_downloaded = get_downloaded_stocks_from_supabase(date_str)
-            supabase_z_scored = get_z_scored_stocks_from_supabase(date_str)
+        # Get what's already done from Supabase
+        downloaded_stocks = get_downloaded_stocks_from_supabase(date_str)
+        z_scored_stocks = get_z_scored_stocks_from_supabase(date_str)
+        
+        print(f"  Downloaded: {len(downloaded_stocks)}/{len(all_tickers)}", flush=True)
+        print(f"  Z-scored: {len(z_scored_stocks)}/{len(all_tickers)}", flush=True)
+        
+        # STAGE 1: Download stocks (skip if already done)
+        if current_stage == 'downloading' or len(downloaded_stocks) < len(all_tickers):
+            check_timeout()
+            print(f"\n{'='*60}", flush=True)
+            print(f"📥 STAGE 1: Downloading stocks", flush=True)
+            print(f"{'='*60}", flush=True)
             
-            print(f"  📊 Supabase status check:", flush=True)
-            print(f"     - Downloaded stocks: {len(supabase_downloaded)}", flush=True)
-            print(f"     - Z-scored stocks: {len(supabase_z_scored)}", flush=True)
+            analysis_progress["status"] = "downloading"
+            analysis_progress["stage"] = "Downloading stocks"
             
-            # Determine actual stage from Supabase
-            actual_stage_from_supabase = None
-            if len(supabase_z_scored) > 0:
-                # If we have z-scored stocks, we're at least at stock_analysis stage
-                if len(supabase_z_scored) == len(supabase_downloaded):
-                    # All downloaded stocks are z-scored - might be at ratio_analysis
-                    actual_stage_from_supabase = "stock_analysis_complete"
-                else:
-                    # Some stocks z-scored but not all - still in stock_analysis
-                    actual_stage_from_supabase = "stock_analysis"
-            elif len(supabase_downloaded) > 0:
-                # Stocks downloaded but not z-scored - still in downloading or starting stock_analysis
-                actual_stage_from_supabase = "downloading"
+            # Get remaining stocks to download
+            remaining_tickers = [t for t in all_tickers if t not in downloaded_stocks]
+            print(f"  Remaining to download: {len(remaining_tickers)}/{len(all_tickers)}", flush=True)
+            
+            if remaining_tickers:
+                batch_data = {}
+                download_delay = 15
+                
+                # Load already downloaded stocks from Supabase
+                for ticker in downloaded_stocks:
+                    try:
+                        data = load_stock_data_from_supabase(ticker, "downloaded", date_str)
+                        if data is not None and isinstance(data, pd.DataFrame) and not data.empty:
+                            batch_data[ticker] = data
+                    except:
+                        pass
+                
+                # Download remaining stocks
+                for idx, ticker in enumerate(remaining_tickers, 1):
+                    check_timeout()
+                    
+                    # Double-check Supabase before downloading
+                    existing = load_stock_data_from_supabase(ticker, "downloaded", date_str)
+                    if existing is not None:
+                        print(f"  ⏭ Skipping {ticker} - already in Supabase", flush=True)
+                        if isinstance(existing, pd.DataFrame) and not existing.empty:
+                            batch_data[ticker] = existing
+                        continue
+                    
+                    print(f"  Downloading {ticker} ({idx}/{len(remaining_tickers)})...", flush=True)
+                    analysis_progress["current"] = len(downloaded_stocks) + idx
+                    analysis_progress["message"] = f"Downloading {ticker} ({idx}/{len(remaining_tickers)})"
+                    
+                    try:
+                        data = download_stock_data(ticker, period="2y", interval="1d", max_retries=3, delay=0.5)
+                        if data is not None and not data.empty:
+                            batch_data[ticker] = data
+                            save_stock_data_to_supabase(ticker, "downloaded", data, date_str)
+                            print(f"    ✓ {ticker} downloaded and saved", flush=True)
+                    except Exception as e:
+                        print(f"    ✗ {ticker} failed: {e}", flush=True)
+                    
+                    if idx < len(remaining_tickers):
+                        time.sleep(download_delay)
             else:
-                # Nothing in Supabase - fresh start
-                actual_stage_from_supabase = None
+                print(f"  ✓ All stocks already downloaded", flush=True)
+                # Load all from Supabase
+                batch_data = {}
+                for ticker in all_tickers:
+                    try:
+                        data = load_stock_data_from_supabase(ticker, "downloaded", date_str)
+                        if data is not None and isinstance(data, pd.DataFrame) and not data.empty:
+                            batch_data[ticker] = data
+                    except:
+                        pass
+        else:
+            print(f"\n⏭ Skipping download - all stocks already downloaded", flush=True)
+            # Load all from Supabase
+            batch_data = {}
+            for ticker in all_tickers:
+                try:
+                    data = load_stock_data_from_supabase(ticker, "downloaded", date_str)
+                    if data is not None and isinstance(data, pd.DataFrame) and not data.empty:
+                        batch_data[ticker] = data
+                except:
+                    pass
+        
+        # STAGE 2: Z-scoring (skip if already done)
+        if current_stage == 'z_scoring' or len(z_scored_stocks) < len(all_tickers):
+            check_timeout()
+            print(f"\n{'='*60}", flush=True)
+            print(f"📊 STAGE 2: Z-scoring stocks", flush=True)
+            print(f"{'='*60}", flush=True)
             
-            print(f"     - Actual stage from Supabase: {actual_stage_from_supabase}", flush=True)
+            analysis_progress["status"] = "analyzing"
+            analysis_progress["stage"] = "Z-scoring stocks"
             
-            # THEN: Check checkpoint
+            # Get remaining stocks to z-score
+            remaining_tickers = [t for t in all_tickers if t not in z_scored_stocks]
+            print(f"  Remaining to z-score: {len(remaining_tickers)}/{len(all_tickers)}", flush=True)
+            
+            if remaining_tickers:
+                results = []
+                ticker_to_sector = {}
+                for sector in sorted(SECTORS.keys()):
+                    for ticker in sorted(SECTORS[sector]):
+                        ticker_to_sector[ticker] = sector
+                
+                # Load already z-scored stocks from Supabase
+                for ticker in z_scored_stocks:
+                    try:
+                        z_data = load_z_score_from_supabase(ticker, date_str)
+                        if z_data:
+                            results.append({
+                                "sector": ticker_to_sector.get(ticker, "Unknown"),
+                                "ticker": ticker,
+                                "z_avg": z_data.get("z_avg", 0.0),
+                                "avg_score": z_data.get("avg_score", 0.0)
+                            })
+                    except:
+                        pass
+                
+                # Process remaining stocks
+                for idx, ticker in enumerate(remaining_tickers, 1):
+                    check_timeout()
+                    
+                    # Double-check Supabase before processing
+                    existing_z = load_z_score_from_supabase(ticker, date_str)
+                    if existing_z:
+                        print(f"  ⏭ Skipping {ticker} - z-score already in Supabase", flush=True)
+                        results.append({
+                            "sector": ticker_to_sector.get(ticker, "Unknown"),
+                            "ticker": ticker,
+                            "z_avg": existing_z.get("z_avg", 0.0),
+                            "avg_score": existing_z.get("avg_score", 0.0)
+                        })
+                        continue
+                    
+                    print(f"  Analyzing {ticker} ({idx}/{len(remaining_tickers)})...", flush=True)
+                    analysis_progress["current"] = len(z_scored_stocks) + idx
+                    analysis_progress["message"] = f"Z-scoring {ticker} ({idx}/{len(remaining_tickers)})"
+                    
+                    try:
+                        if ticker not in batch_data:
+                            data = load_stock_data_from_supabase(ticker, "downloaded", date_str)
+                            if data is None or data.empty:
+                                print(f"    ✗ {ticker} data not found, skipping", flush=True)
+                                continue
+                        else:
+                            data = batch_data[ticker]
+                        
+                        result = analyze_stock(ticker, data, CONFIG)
+                        if result:
+                            sector = ticker_to_sector.get(ticker, "Unknown")
+                            save_z_score_to_supabase(ticker, result.get("z_avg", 0.0), result.get("avg_score", 0.0), sector, result, date_str)
+                            results.append({
+                                "sector": sector,
+                                "ticker": ticker,
+                                "z_avg": result.get("z_avg", 0.0),
+                                "avg_score": result.get("avg_score", 0.0)
+                            })
+                            print(f"    ✓ {ticker} z-scored and saved", flush=True)
+                    except Exception as e:
+                        print(f"    ✗ {ticker} failed: {e}", flush=True)
+            else:
+                print(f"  ✓ All stocks already z-scored", flush=True)
+                # Load all from Supabase
+                results = []
+                ticker_to_sector = {}
+                for sector in sorted(SECTORS.keys()):
+                    for ticker in sorted(SECTORS[sector]):
+                        ticker_to_sector[ticker] = sector
+                
+                for ticker in all_tickers:
+                    try:
+                        z_data = load_z_score_from_supabase(ticker, date_str)
+                        if z_data:
+                            results.append({
+                                "sector": ticker_to_sector.get(ticker, "Unknown"),
+                                "ticker": ticker,
+                                "z_avg": z_data.get("z_avg", 0.0),
+                                "avg_score": z_data.get("avg_score", 0.0)
+                            })
+                    except:
+                        pass
+        else:
+            print(f"\n⏭ Skipping z-scoring - all stocks already z-scored", flush=True)
+            # Load all from Supabase
+            results = []
+            ticker_to_sector = {}
+            for sector in sorted(SECTORS.keys()):
+                for ticker in sorted(SECTORS[sector]):
+                    ticker_to_sector[ticker] = sector
+            
+            for ticker in all_tickers:
+                try:
+                    z_data = load_z_score_from_supabase(ticker, date_str)
+                    if z_data:
+                        results.append({
+                            "sector": ticker_to_sector.get(ticker, "Unknown"),
+                            "ticker": ticker,
+                            "z_avg": z_data.get("z_avg", 0.0),
+                            "avg_score": z_data.get("avg_score", 0.0)
+                        })
+                except:
+                    pass
+        
+        if not results:
+            raise Exception("No z-scores calculated")
+        
+        # Format results by sector
+        results_df = pd.DataFrame(results)
+        output_sectors = []
+        for sector in sorted(SECTORS.keys()):
+            sector_results = results_df[results_df['sector'] == sector]
+            if not sector_results.empty:
+                stocks_list = [{"ticker": r['ticker'], "z": float(r['z_avg']), "avg_score": float(r['avg_score'])} 
+                              for _, r in sector_results.iterrows()]
+                stocks_list.sort(key=lambda x: x['z'] + x['avg_score'], reverse=True)
+                output_sectors.append({
+                    "name": sector,
+                    "avg_z": float(sector_results['z_avg'].mean()),
+                    "avg_score": float(sector_results['avg_score'].mean()),
+                    "stocks": stocks_list
+                })
+        output_sectors.sort(key=lambda x: x['avg_z'] + x['avg_score'], reverse=True)
+        
+        # STAGE 3: Ratio Analysis (skip if already done)
+        ratio_analysis = None
+        if current_stage == 'ratio_analysis' or not check_ratio_analysis_exists_in_supabase(date_str):
+            check_timeout()
+            print(f"\n{'='*60}", flush=True)
+            print(f"📈 STAGE 3: Ratio Analysis", flush=True)
+            print(f"{'='*60}", flush=True)
+            
+            analysis_progress["status"] = "ratio_analysis"
+            analysis_progress["stage"] = "Ratio Analysis"
+            
+            # Get all z-scored stocks for comparison
+            all_z_scored = get_z_scored_stocks_from_supabase(date_str)
+            print(f"  Comparing {len(all_z_scored)} stocks against each other...", flush=True)
+            
+            ratio_scores = {}
+            for idx, ticker1 in enumerate(all_z_scored, 1):
+                check_timeout()
+                print(f"  Comparing {ticker1} ({idx}/{len(all_z_scored)})...", flush=True)
+                analysis_progress["current"] = idx
+                analysis_progress["message"] = f"Ratio analysis: {ticker1} ({idx}/{len(all_z_scored)})"
+                
+                ratio_z_scores = []
+                for ticker2 in all_z_scored:
+                    if ticker1 == ticker2:
+                        continue
+                    try:
+                        ratio_score = calculate_ratio_avg_score(ticker1, ticker2, CONFIG)
+                        if ratio_score is not None:
+                            ratio_z_scores.append(ratio_score)
+                    except:
+                        pass
+                
+                if ratio_z_scores:
+                    avg_ratio_score = sum(ratio_z_scores) / len(ratio_z_scores)
+                    ratio_scores[ticker1] = avg_ratio_score
+                    save_ratio_analysis_to_supabase(ticker1, avg_ratio_score, len(ratio_z_scores), ratio_z_scores, date_str)
+            
+            if ratio_scores:
+                sorted_ratio = sorted(ratio_scores.items(), key=lambda x: x[1], reverse=True)
+                ratio_analysis = {
+                    "top_stocks": [{"ticker": t, "ratio_score": s} for t, s in sorted_ratio[:10]],
+                    "current_best": sorted_ratio[0][0] if sorted_ratio else "N/A"
+                }
+                save_ratio_analysis_summary_to_supabase(ratio_analysis, datetime.now().isoformat(), len(all_z_scored), date_str)
+        else:
+            print(f"\n⏭ Skipping ratio analysis - already exists in Supabase", flush=True)
+        
+        # STAGE 4: Backtest (skip if already done)
+        backtest_results = None
+        if current_stage == 'backtest' or not check_backtest_exists_in_supabase(date_str):
+            check_timeout()
+            print(f"\n{'='*60}", flush=True)
+            print(f"📉 STAGE 4: Backtesting", flush=True)
+            print(f"{'='*60}", flush=True)
+            
+            analysis_progress["status"] = "backtesting"
+            analysis_progress["stage"] = "Backtesting"
+            
+            if ratio_analysis and ratio_analysis.get("top_stocks"):
+                top_stocks = [(s["ticker"], s["ratio_score"]) for s in ratio_analysis["top_stocks"][:10]]
+                backtest_results = perform_historical_backtest(top_stocks, CONFIG)
+                if backtest_results:
+                    save_backtest_to_supabase(backtest_results, ratio_analysis, datetime.now().isoformat(), date_str)
+        else:
+            print(f"\n⏭ Skipping backtest - already exists in Supabase", flush=True)
+        
+        # Final verification
+        check_timeout()
+        print(f"\n{'='*60}", flush=True)
+        print(f"✅ Final Verification", flush=True)
+        print(f"{'='*60}", flush=True)
+        
+        final_downloaded = get_downloaded_stocks_from_supabase(date_str)
+        final_z_scored = get_z_scored_stocks_from_supabase(date_str)
+        final_ratio = check_ratio_analysis_exists_in_supabase(date_str)
+        final_backtest = check_backtest_exists_in_supabase(date_str)
+        
+        print(f"  Downloaded: {len(final_downloaded)}/{len(all_tickers)}", flush=True)
+        print(f"  Z-scored: {len(final_z_scored)}/{len(all_tickers)}", flush=True)
+        print(f"  Ratio analysis: {'✓' if final_ratio else '✗'}", flush=True)
+        print(f"  Backtest: {'✓' if final_backtest else '✗'}", flush=True)
+        
+        if len(final_downloaded) == len(all_tickers) and len(final_z_scored) == len(all_tickers) and final_ratio and final_backtest:
+            print(f"\n✅ All stages complete!", flush=True)
+            
+            # Build final response
+            response_data = {
+                "sectors": output_sectors,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            if ratio_analysis:
+                response_data["ratio_analysis"] = ratio_analysis
+            if backtest_results:
+                response_data["backtest"] = backtest_results
+            
+            analysis_progress["status"] = "complete"
+            analysis_progress["results"] = response_data
+            
+            # Sleep until next day at 14:40 UTC
+            print(f"\n💤 Sleeping until next day at 14:40 UTC...", flush=True)
+            now = datetime.utcnow()
+            target_time = now.replace(hour=14, minute=40, second=0, microsecond=0)
+            if target_time <= now:
+                target_time += timedelta(days=1)
+            
+            sleep_seconds = (target_time - now).total_seconds()
+            print(f"  Will wake up at {target_time.strftime('%Y-%m-%d %H:%M:%S')} UTC ({sleep_seconds/3600:.1f} hours)", flush=True)
+            
+            # Sleep in chunks to allow interruption
+            while sleep_seconds > 0:
+                chunk = min(3600, sleep_seconds)  # Sleep in 1-hour chunks
+                time.sleep(chunk)
+                sleep_seconds -= chunk
+                if sleep_seconds > 0:
+                    print(f"  Still sleeping... {sleep_seconds/3600:.1f} hours remaining", flush=True)
+            
+            return response_data
+        else:
+            raise Exception(f"Analysis incomplete: Downloaded={len(final_downloaded)}/{len(all_tickers)}, Z-scored={len(final_z_scored)}/{len(all_tickers)}, Ratio={final_ratio}, Backtest={final_backtest}")
+        
+    except Exception as e:
+        import sys
+        import traceback
+        error_type = type(e).__name__
+        error_msg = str(e)
+        tb_str = traceback.format_exc()
+        
+        # Update progress with error
+        analysis_progress["status"] = "error"
+        analysis_progress["error"] = error_msg
+        analysis_progress["last_update"] = time.time()
+        
+        # Print to stdout (visible in Render logs) - force flush
+        print(f"\n{'='*60}", flush=True)
+        print(f"✗ FATAL ERROR in /analyze endpoint", flush=True)
+        print(f"{'='*60}", flush=True)
+        print(f"Error Type: {error_type}", flush=True)
+        print(f"Error Message: {error_msg}", flush=True)
+        print(f"\nFull Traceback:", flush=True)
+        print(tb_str, flush=True)
+        print(f"{'='*60}\n", flush=True)
+        sys.stdout.flush()
+        
+        # Also print to stderr
+        print(tb_str, file=sys.stderr)
+        sys.stderr.flush()
+        
+        # Return error response (raise exception for background thread to catch)
+        raise Exception(f"Server error: {error_msg}")
+    finally:
+        # Always release the lock
+        analysis_lock.release()
+
+@app.route('/analyze', methods=['GET'])
             cached_data = load_cache()
             if cached_data:
                 # Validate checkpoint: if stage is "downloading" or "stock_analysis", it's partial even if _partial is False
