@@ -3034,7 +3034,7 @@ def save_stock_data_to_supabase(ticker, stage, data, date_str=None):
                     print(f"  ⚠ Warning: Column mismatch for {ticker} - {num_cols} cols vs {num_data_cols} data cols", flush=True)
         elif isinstance(data, dict):
             data_dict = data
-    else:
+        else:
             # Try to serialize other types
             data_dict = json.loads(json.dumps(data, default=str))
         
