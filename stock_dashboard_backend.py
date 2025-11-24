@@ -4249,10 +4249,8 @@ def start_background_analysis():
             if is_actually_partial:
                 print(f"✓ Partial checkpoint found - will resume from stage: {checkpoint_stage}", flush=True)
                 print("="*60 + "\n", flush=True)
-                    elapsed = time.time() - start_time
-                    print(f"✓ Loading data from cache... (took {elapsed:.2f}s)", flush=True)
-                    analysis_progress["status"] = "complete"
-                    analysis_progress["results"] = cached_data
+                # Don't return - continue to start analysis which will resume from checkpoint
+                print("🚀 Resuming analysis from checkpoint...", flush=True)
                     analysis_progress["message"] = "Loaded from cache"
                     return cached_data  # Return dict, not jsonify
                 else:
