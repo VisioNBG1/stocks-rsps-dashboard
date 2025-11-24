@@ -436,7 +436,7 @@ SECTORS = {
     ],
     "Materials": [
         "LIN", "APD", "ECL", "SHW", "PPG", "DD", "DOW", "FCX", "NEM", "VALE",
-        "RIO", "BHP", "SCCO", "TECK", "AA", "X", "CLF", "STLD", "NUE", "CMC",
+        "RIO", "BHP", "SCCO", "TECK", "AA", "CLF", "STLD", "NUE", "CMC",
         "RS", "WLK", "LYB", "CE", "FMC", "MOS", "NTR", "CF", "CTVA", "ADM"
     ],
     "Communication Services": [
@@ -3238,7 +3238,7 @@ def get_downloaded_stocks_from_supabase(date_str=None):
         return []
 
 def get_z_scored_stocks_from_supabase(date_str=None):
-    """Get list of all stocks that have been z-scored (stored in Supabase)"""
+    """Get list of all stocks that have been z-scored (from z_scores table)"""
     if not supabase_client:
         return []
     
@@ -3246,18 +3246,18 @@ def get_z_scored_stocks_from_supabase(date_str=None):
         if date_str is None:
             date_str = datetime.now().strftime("%Y-%m-%d")
         
-        # Get all z-scored stocks for today's date
-        result = supabase_client.table("stock_data").select("ticker").eq("stage", "z_scored").eq("date_str", date_str).execute()
+        # Get all z-scored stocks from z_scores table (not stock_data)
+        result = supabase_client.table("z_scores").select("ticker").eq("date_str", date_str).execute()
         
         if result.data:
             tickers = list(set([record.get("ticker") for record in result.data if record.get("ticker")]))
-            print(f"  📊 Found {len(tickers)} z-scored stocks in Supabase for {date_str}", flush=True)
+            print(f"  📊 Found {len(tickers)} z-scored stocks in z_scores table for {date_str}", flush=True)
             return tickers
         else:
-            print(f"  ℹ No z-scored stocks found in Supabase for {date_str}", flush=True)
+            print(f"  ℹ No z-scored stocks found in z_scores table for {date_str}", flush=True)
             return []
     except Exception as e:
-        print(f"  ⚠ Error getting z-scored stocks from Supabase: {e}", flush=True)
+        print(f"  ⚠ Error getting z-scored stocks from z_scores table: {e}", flush=True)
         import traceback
         traceback.print_exc()
         return []
