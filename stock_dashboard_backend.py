@@ -4245,13 +4245,10 @@ def start_background_analysis():
             # Invalid checkpoint detection: if stage indicates incomplete work, treat as partial
             incomplete_stages = ["downloading", "stock_analysis", "ratio_analysis"]
             is_actually_partial = is_partial_flag or (checkpoint_stage in incomplete_stages)
-                    checkpoint_updated = True
-                    # Recalculate is_actually_partial after updating checkpoint
-                    incomplete_stages = ["downloading", "stock_analysis", "ratio_analysis"]
-                    is_actually_partial = True  # If we updated checkpoint, it's definitely partial
-                
-                # Check if it's a complete cache (only if checkpoint wasn't just updated)
-                if not checkpoint_updated and not is_actually_partial and "sectors" in cached_data:
+            
+            if is_actually_partial:
+                print(f"✓ Partial checkpoint found - will resume from stage: {checkpoint_stage}", flush=True)
+                print("="*60 + "\n", flush=True)
                     elapsed = time.time() - start_time
                     print(f"✓ Loading data from cache... (took {elapsed:.2f}s)", flush=True)
                     analysis_progress["status"] = "complete"
