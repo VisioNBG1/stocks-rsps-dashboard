@@ -5975,8 +5975,8 @@ def start_background_analysis():
             print("="*60 + "\n", flush=True)
             global analysis_progress
             analysis_progress["status"] = "complete"
-            analysis_progress["results"] = cached_data
-            analysis_progress["message"] = "Loaded from cache"
+                    analysis_progress["results"] = cached_data
+                    analysis_progress["message"] = "Loaded from cache"
                     return  # Only return if complete - partial checkpoints should continue
                 else:
                     # Invalid or incomplete checkpoint - treat as partial
@@ -5987,8 +5987,7 @@ def start_background_analysis():
         
         # Start analysis (either fresh or resuming from checkpoint)
         print("\n" + "="*60, flush=True)
-        if cached_data:
-            print("🚀 Starting automatic background analysis...", flush=True)
+        print("🚀 Starting automatic background analysis...", flush=True)
             print(f"   (Resuming from checkpoint: {checkpoint_stage})", flush=True)
         else:
         print("🚀 Starting automatic background analysis...", flush=True)
