@@ -4278,8 +4278,22 @@ def start_background_analysis():
         # Start analysis (either fresh or resuming from checkpoint)
         print("\n" + "="*60, flush=True)
         print("🚀 Starting automatic background analysis...", flush=True)
-            # Resume from stock_analysis stage - load all downloaded stocks from Supabase
-            print("  🔄 Resuming from stock_analysis stage - loading downloaded stocks from Supabase...", flush=True)
+        print("="*60 + "\n", flush=True)
+        
+        # Call the analysis function directly
+        try:
+            run_analysis_logic(force_refresh=False)
+        except Exception as e:
+            print(f"\n⚠ Error in background analysis: {e}", flush=True)
+            import traceback
+            import sys
+            traceback.print_exc(file=sys.stderr)
+            sys.stderr.flush()
+    
+    # Start background thread
+    thread = threading.Thread(target=run_analysis, daemon=True)
+    thread.start()
+    print("✓ Background analysis thread started (will check cache and run if needed)", flush=True)
             date_str = datetime.now().strftime("%Y-%m-%d")
             
             # Load checkpoint to get list of downloaded stocks
