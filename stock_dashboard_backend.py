@@ -4202,6 +4202,15 @@ def update_status():
 
 # --- Keep-Alive Thread (prevents services from spinning down) ---
 def start_keepalive():
+    """Periodically hit health endpoint to keep service alive (Render, Fly.io, etc.)"""
+    def keepalive_loop():
+        from urllib.request import urlopen
+        from urllib.error import URLError
+        import time
+        
+        while True:
+            try:
+                # Wait 2 minutes between keep-alive requests (more frequent for Fly.io)
                 time.sleep(120)  # 2 minutes
                 
                 # Make a request to health endpoint to keep service alive
