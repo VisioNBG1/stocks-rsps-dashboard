@@ -385,65 +385,66 @@ def download_stock_data(ticker, period="2y", interval="1d", start=None, end=None
     
     return pd.DataFrame()
 
+# SECTORS with all stocks sorted alphabetically for deterministic processing order
 SECTORS = {
-    "Technology": [
-        "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA", "AVGO", "ORCL",
-        "AMD", "INTC", "CRM", "ADBE", "CSCO", "TXN", "QCOM", "NOW", "AMAT", "MU",
-        "LRCX", "KLAC", "SNPS", "CDNS", "INTU", "FTNT", "PANW", "CRWD", "ZS",
-        "NET", "DDOG", "TEAM", "DOCN", "MDB", "SNOW", "PLTR", "RPD", "ESTC"
-    ],
-    "Energy": [
-        "XOM", "CVX", "SLB", "EOG", "COP", "MPC", "PSX", "VLO", "HAL",
-        "OXY", "DVN", "FANG", "CTRA", "APA", "BKR", "NOV", "FTI", "RIG",
-        "HP", "LBRT", "NBR", "PTEN", "WFRD", "VTLE", "SM", "CIVI", "MGY", "MTDR"
-    ],
-    "Health Care": [
-        "JNJ", "PFE", "LLY", "UNH", "ABBV", "TMO", "ABT", "DHR", "BMY", "AMGN",
-        "GILD", "CI", "HUM", "CVS", "ELV", "CNC", "MOH", "MRNA", "BIIB", "REGN",
-        "VRTX", "ALNY", "IONS", "FOLD", "ARWR", "SGMO", "BEAM", "NTLA", "EDIT",
-        "ZTS", "IDXX", "ALGN", "ISRG", "SYK", "BAX", "EW", "BSX", "ZBH", "HOLX"
-    ],
-    "Industrials": [
-        "BA", "CAT", "DE", "HON", "GE", "RTX", "LMT", "NOC", "GD", "TDG",
-        "ETN", "EMR", "ITW", "PH", "AME", "DOV", "FTV", "GGG", "PNR", "ROK",
-        "CMI", "PCAR", "WAB", "KNX", "JBHT", "ODFL", "XPO", "CHRW", "EXPD", "FDX",
-        "UPS", "AAL", "DAL", "LUV", "UAL", "JBLU", "ALK", "SKYW"
-    ],
-    "Utilities": [
-        "NEE", "SO", "DUK", "AEP", "SRE", "EXC", "XEL", "ES", "EIX", "PEG",
-        "ED", "FE", "AES", "VST", "CEG", "PCG", "ETR", "CMS", "ATO", "LNT",
-        "WEC", "CNP", "NI", "OGE", "PNW", "POR", "IDA", "SWX", "NWN", "RGCO"
-    ],
-    "Consumer Staples": [
-        "PG", "KO", "WMT", "COST", "PEP", "CL", "MDLZ", "GIS", "KMB", "HSY",
-        "SJM", "CPB", "CAG", "HRL", "TSN", "BG", "ADM", "LW", "FLO", "SJM",
-        "TGT", "HD", "LOW", "TJX", "ROST", "BBWI", "DKS", "ANF", "AEO"
-    ],
-    "Financials": [
-        "JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "SCHW", "AXP", "COF",
-        "USB", "PNC", "TFC", "BK", "STT", "BEN", "IVZ", "AMTD", "HOOD",
-        "V", "MA", "PYPL", "FIS", "FISV", "GPN", "FLYW", "AFRM", "UPST", "SOFI"
-    ],
-    "Consumer Discretionary": [
-        "AMZN", "TSLA", "NKE", "SBUX", "MCD", "YUM", "CMG", "DPZ", "WING", "CAVA",
-        "DIS", "NFLX", "WBD", "FOXA", "ROKU", "FUBO", "DKNG", "PENN", "LNW",
-        "F", "GM", "STLA", "HMC", "TM", "RIVN", "LCID", "FISK"
-    ],
-    "Real Estate": [
-        "AMT", "PLD", "EQIX", "PSA", "WELL", "VICI", "SPG", "O", "DLR", "EXPI",
-        "CBRE", "JLL", "CWK", "REXR", "STAG", "FR", "BRX", "BXP", "KIM", "REG",
-        "MAC", "SLG", "VTR", "CTRE", "DOC", "MPW", "OHI", "GMRE"
-    ],
-    "Materials": [
-        "LIN", "APD", "ECL", "SHW", "PPG", "DD", "DOW", "FCX", "NEM", "VALE",
-        "RIO", "BHP", "SCCO", "TECK", "AA", "CLF", "STLD", "NUE", "CMC",
-        "RS", "WLK", "LYB", "CE", "FMC", "MOS", "NTR", "CF", "CTVA", "ADM"
-    ],
-    "Communication Services": [
-        "GOOGL", "GOOG", "META", "NFLX", "DIS", "CMCSA", "T", "VZ", "TMUS", "LUMN",
-        "WBD", "FOXA", "NWSA", "NWS", "IAC", "ANGI", "TRIP", "EXPE", "BKNG",
-        "ABNB", "UBER", "LYFT", "GRAB", "BIDU", "JD", "PDD", "BABA", "TME"
-    ]
+    "Communication Services": sorted([
+        "ABNB", "ANGI", "BABA", "BIDU", "BKNG", "CMCSA", "DIS", "EXPE", "FOXA", "GOOG",
+        "GOOGL", "GRAB", "IAC", "JD", "LUMN", "LYFT", "META", "NFLX", "NWS", "NWSA",
+        "PDD", "T", "TME", "TMUS", "TRIP", "UBER", "VZ", "WBD"
+    ]),
+    "Consumer Discretionary": sorted([
+        "AMZN", "CAVA", "DIS", "DKNG", "DPZ", "F", "FISK", "FOXA", "GM", "HMC",
+        "LCID", "LNW", "MCD", "NFLX", "NKE", "PENN", "RIVN", "ROKU", "SBUX", "STLA",
+        "TM", "TSLA", "WBD", "WING", "YUM", "CMG"
+    ]),
+    "Consumer Staples": sorted([
+        "ADM", "AEO", "ANF", "BBWI", "BG", "CAG", "CL", "COST", "CPB", "DKS",
+        "FLO", "GIS", "HD", "HRL", "HSY", "KMB", "KO", "LOW", "LW", "MDLZ",
+        "PEP", "PG", "ROST", "SJM", "TJX", "TSN", "TGT", "WMT"
+    ]),
+    "Energy": sorted([
+        "APA", "BKR", "CIVI", "COP", "CTRA", "CVX", "DVN", "EOG", "FANG", "FTI",
+        "HAL", "HP", "LBRT", "MGY", "MPC", "MTDR", "NBR", "NOV", "OXY", "PSX",
+        "PTEN", "RIG", "SLB", "SM", "VTLE", "VLO", "WFRD", "XOM"
+    ]),
+    "Financials": sorted([
+        "AFRM", "AMTD", "AXP", "BAC", "BK", "BLK", "C", "COF", "FLYW", "FIS",
+        "FISV", "GPN", "GS", "HOOD", "IVZ", "JPM", "MA", "MS", "PNC", "PYPL",
+        "SCHW", "SOFI", "STT", "TFC", "UPST", "USB", "V", "WFC"
+    ]),
+    "Health Care": sorted([
+        "ABBV", "ABT", "ALGN", "ALNY", "AMGN", "ARWR", "BAX", "BEAM", "BIIB", "BMY",
+        "BSX", "CI", "CNC", "CVS", "DHR", "EDIT", "ELV", "EW", "FOLD", "GILD",
+        "HOLX", "HUM", "IDXX", "IONS", "ISRG", "JNJ", "LLY", "MOH", "MRNA", "NTLA",
+        "PFE", "REGN", "SGMO", "SYK", "TMO", "UNH", "VRTX", "ZBH", "ZTS"
+    ]),
+    "Industrials": sorted([
+        "AAL", "ALK", "AME", "BA", "CAT", "CHRW", "CMI", "DAL", "DE", "DOV",
+        "EMR", "ETN", "EXPD", "FDX", "FTV", "GD", "GGG", "GE", "HON", "ITW",
+        "JBHT", "JBLU", "KNX", "LMT", "LUV", "NOC", "ODFL", "PCAR", "PH", "PNR",
+        "ROK", "RTX", "SKYW", "TDG", "UAL", "UPS", "WAB", "XPO"
+    ]),
+    "Materials": sorted([
+        "AA", "ADM", "APD", "BHP", "CE", "CF", "CLF", "CMC", "CTVA", "DD",
+        "DOW", "ECL", "FCX", "FMC", "LIN", "LYB", "MOS", "NEM", "NTR", "NUE",
+        "PPG", "RIO", "RS", "SCCO", "SHW", "STLD", "TECK", "VALE", "WLK"
+    ]),
+    "Real Estate": sorted([
+        "AMT", "BRX", "BXP", "CBRE", "CTRE", "DLR", "DOC", "EQIX", "EXPI", "FR",
+        "GMRE", "JLL", "KIM", "MAC", "MPW", "O", "OHI", "PLD", "PSA", "REG",
+        "REXR", "SLG", "SPG", "STAG", "VICI", "VTR", "WELL", "CWK"
+    ]),
+    "Technology": sorted([
+        "AAPL", "ADBE", "AMD", "AMAT", "ANSS", "AVGO", "CDNS", "CRM", "CRWD", "CSCO",
+        "DDOG", "DOCN", "ESTC", "FTNT", "GOOG", "GOOGL", "INTC", "INTU", "KLAC", "LRCX",
+        "MDB", "META", "MSFT", "MU", "NET", "NOW", "NVDA", "ORCL", "PANW", "PLTR",
+        "QCOM", "RPD", "SNOW", "SNPS", "TEAM", "TSLA", "TXN", "ZS"
+    ]),
+    "Utilities": sorted([
+        "AEP", "ATO", "CEG", "CMS", "CNP", "DUK", "ED", "EIX", "ES", "FE",
+        "IDA", "LNT", "NI", "NEE", "NWN", "OGE", "PCG", "PEG", "PNW", "POR",
+        "RGCO", "SO", "SRE", "SWX", "VST", "WEC", "XEL"
+    ])
 }
 
 # --- Helper Functions ---
@@ -2957,7 +2958,7 @@ def load_checkpoint_from_supabase(checkpoint_id=None):
                         data["_partial"] = True
                         data["_stage"] = checkpoint_stage
                     print(f"  ✓ Checkpoint loaded from Supabase (stage: {checkpoint_record.get('stage', 'unknown')}, {len(data)} keys)", flush=True)
-                return data
+                    return data
                 except json.JSONDecodeError as json_err:
                     print(f"  ⚠ Failed to parse JSON from Supabase: {json_err}", flush=True)
                     print(f"  📄 Data preview: {data_value[:200] if len(str(data_value)) > 200 else data_value}...", flush=True)
