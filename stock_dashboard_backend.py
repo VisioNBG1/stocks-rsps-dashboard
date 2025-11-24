@@ -4194,8 +4194,7 @@ def get_analysis_results():
 
 
 # --- Keep-Alive Thread (prevents services from spinning down) ---
-                checkpoint_downloaded = cached_data.get("downloaded_stocks", [])
-                if not isinstance(checkpoint_downloaded, list):
+def start_keepalive():
                     checkpoint_downloaded = []
                 checkpoint_downloaded = list(set(checkpoint_downloaded))
                 
