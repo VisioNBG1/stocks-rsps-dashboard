@@ -4198,8 +4198,10 @@ def update_status():
     """Endpoint to get the current status of the analysis"""
     global analysis_progress
     return jsonify(analysis_progress)
-            try:
-                # Wait 2 minutes between keep-alive requests (more frequent for Fly.io)
+
+
+# --- Keep-Alive Thread (prevents services from spinning down) ---
+def start_keepalive():
                 time.sleep(120)  # 2 minutes
                 
                 # Make a request to health endpoint to keep service alive
