@@ -5984,6 +5984,64 @@ def start_background_analysis():
     thread.start()
     print("✓ Background analysis thread started (will check cache and run if needed)", flush=True)
 
+# Cleanup old data on startup using Supabase API
+def cleanup_old_data_on_startup():
+    """Delete all old analysis data from Supabase on startup to start fresh"""
+    try:
+        if not SUPABASE_AVAILABLE or not supabase_client:
+            print("  ⚠ Supabase not available - skipping cleanup", flush=True)
+            return
+        
+        print("  🗑️  Cleaning up old analysis data from Supabase...", flush=True)
+        
+        # Delete from all tables
+        deleted_counts = {}
+        
+        # Delete from stock_data table
+        try:
+            result = supabase_client.table("stock_data").delete().neq("id", "never_delete").execute()
+            deleted_counts["stock_data"] = len(result.data) if result.data else 0
+        except Exception as e:
+            deleted_counts["stock_data"] = f"Error: {str(e)}"
+        
+        # Delete from z_scores table
+        try:
+            result = supabase_client.table("z_scores").delete().neq("id", "never_delete").execute()
+            deleted_counts["z_scores"] = len(result.data) if result.data else 0
+        except Exception as e:
+            deleted_counts["z_scores"] = f"Error: {str(e)}"
+        
+        # Delete from ratio_analysis table
+        try:
+            result = supabase_client.table("ratio_analysis").delete().neq("id", "never_delete").execute()
+            deleted_counts["ratio_analysis"] = len(result.data) if result.data else 0
+        except Exception as e:
+            deleted_counts["ratio_analysis"] = f"Error: {str(e)}"
+        
+        # Delete from checkpoints table
+        try:
+            result = supabase_client.table("checkpoints").delete().neq("id", "never_delete").execute()
+            deleted_counts["checkpoints"] = len(result.data) if result.data else 0
+        except Exception as e:
+            deleted_counts["checkpoints"] = f"Error: {str(e)}"
+        
+        # Delete from backtest_results table if it exists
+        try:
+            result = supabase_client.table("backtest_results").delete().neq("id", "never_delete").execute()
+            deleted_counts["backtest_results"] = len(result.data) if result.data else 0
+        except:
+            deleted_counts["backtest_results"] = 0  # Table might not exist
+        
+        total_deleted = sum([v for v in deleted_counts.values() if isinstance(v, int)])
+        print(f"  ✓ Cleanup complete: {total_deleted} records deleted", flush=True)
+        for table, count in deleted_counts.items():
+            print(f"     - {table}: {count}", flush=True)
+    except Exception as e:
+        print(f"  ⚠ Error during cleanup: {e}", flush=True)
+
+# Run cleanup on module load
+cleanup_old_data_on_startup()
+
 # Start keep-alive and background analysis when module loads (for gunicorn)
 # Only start if not already running (to avoid duplicate threads)
 if not hasattr(app, '_background_analysis_started'):
