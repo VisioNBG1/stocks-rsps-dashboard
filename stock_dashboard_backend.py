@@ -2980,11 +2980,11 @@ def load_checkpoint_from_supabase(checkpoint_id=None):
         else:
             print(f"  ℹ No checkpoint found in Supabase (table may be empty or query returned no results)", flush=True)
             return None
-        except Exception as e:
+    except Exception as e:
         print(f"  ⚠ Failed to load checkpoint from Supabase: {e}", flush=True)
         import traceback
         traceback.print_exc()
-            return None
+        return None
 
 def save_stock_data_to_supabase(ticker, stage, data, date_str=None):
     """Save stock data to Supabase stock_data table"""
