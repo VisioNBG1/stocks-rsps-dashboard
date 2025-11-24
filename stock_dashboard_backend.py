@@ -4195,12 +4195,35 @@ def get_analysis_results():
 
 # --- Keep-Alive Thread (prevents services from spinning down) ---
 def start_keepalive():
-                    checkpoint_downloaded = []
-                checkpoint_downloaded = list(set(checkpoint_downloaded))
+    """Periodically hit health endpoint to keep service alive (Render, Fly.io, etc.)"""
+    def keepalive_loop():
+        from urllib.request import urlopen
+        from urllib.error import URLError
+        import time
+        
+        while True:
+            try:
+                # Wait 2 minutes between keep-alive requests (more frequent for Fly.io)
+                time.sleep(120)  # 2 minutes
                 
-                checkpoint_updated = False
-                if len(supabase_downloaded) > len(checkpoint_downloaded):
-                    print(f"  ⚠ Checkpoint mismatch: Supabase has {len(supabase_downloaded)} stocks, checkpoint says {len(checkpoint_downloaded)}", flush=True)
+                # Make a request to health endpoint to keep service alive
+                try:
+                    port = os.environ.get('PORT', '8080')
+                    url = f'http://localhost:{port}/health'
+                    with urlopen(url, timeout=5) as response:
+                        status = response.getcode()
+                        print(f"✓ Keep-alive ping sent (status: {status})", flush=True)
+                except (URLError, OSError) as e:
+                    # Ignore keep-alive errors - they're non-critical
+                    print(f"⚠ Keep-alive ping failed (non-critical): {e}", flush=True)
+            except Exception as e:
+                print(f"⚠ Keep-alive error (non-critical): {e}", flush=True)
+                time.sleep(60)  # Wait 1 minute before retrying
+    
+    # Start keep-alive thread
+    keepalive_thread = threading.Thread(target=keepalive_loop, daemon=True)
+    keepalive_thread.start()
+    print("✓ Keep-alive thread started (will ping every 2 minutes to prevent spin-down)", flush=True)
                     print(f"  🔄 Using Supabase as source of truth and updating checkpoint...", flush=True)
                     # Update checkpoint to match Supabase
                     cached_data["downloaded_stocks"] = supabase_downloaded
