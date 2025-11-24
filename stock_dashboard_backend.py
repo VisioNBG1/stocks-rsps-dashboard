@@ -4049,7 +4049,7 @@ def run_analysis_logic(force_refresh=False):
             cached_data = load_cache()
             checkpoint_stage = cached_data.get("_stage", "") if cached_data else ""
             
-            # If resuming from stock_analysis, load already processed results
+            # If resuming from stock_analysis, load already processed results AND downloaded stock data
             if checkpoint_stage == "stock_analysis" and cached_data and "sectors" in cached_data:
                 print(f"  🔄 Resuming stock_analysis - loading already processed results from checkpoint...", flush=True)
                 output_sectors = cached_data["sectors"]
@@ -4098,6 +4098,27 @@ def run_analysis_logic(force_refresh=False):
                                     print(f"  ✓ Loaded {ticker} z-scores from Supabase", flush=True)
                 except Exception as supabase_error:
                     print(f"  ⚠ Could not load z-scores from Supabase: {supabase_error}", flush=True)
+                
+                # CRITICAL: Load already downloaded stock data from Supabase so we don't re-download
+                print(f"  🔄 Loading already downloaded stock data from Supabase...", flush=True)
+                try:
+                    date_str = datetime.now().strftime("%Y-%m-%d")
+                    downloaded_stocks = get_downloaded_stocks_from_supabase(date_str)
+                    print(f"  📊 Found {len(downloaded_stocks)} downloaded stocks in Supabase for {date_str}", flush=True)
+                    
+                    # Load the actual stock data for all downloaded stocks
+                    for ticker in downloaded_stocks:
+                        if ticker not in processed_tickers_from_checkpoint:  # Only load if not already processed
+                            stock_data = load_stock_data_from_supabase(ticker, "downloaded", date_str)
+                            if stock_data is not None and not stock_data.empty:
+                                batch_data[ticker] = stock_data
+                                print(f"  ✓ Loaded {ticker} stock data from Supabase ({len(stock_data)} rows)", flush=True)
+                    
+                    print(f"  ✓ Loaded {len(batch_data)} stocks from Supabase, ready for z-scoring", flush=True)
+                except Exception as load_error:
+                    print(f"  ⚠ Could not load downloaded stocks from Supabase: {load_error}", flush=True)
+                    import traceback
+                    traceback.print_exc()
                 
                 print(f"  📋 Already processed: {', '.join(sorted(processed_tickers_from_checkpoint)[:10])}{'...' if len(processed_tickers_from_checkpoint) > 10 else ''}", flush=True)
             elif not was_resuming_from_downloading:
