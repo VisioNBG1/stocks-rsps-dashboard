@@ -1355,6 +1355,60 @@ def cleanup_duplicates():
             "traceback": error_details
         }), 500
 
+@app.route('/cleanup-ratio-analysis', methods=['POST', 'GET'])
+def cleanup_ratio_analysis():
+    """Clean up ratio_analysis table data
+    
+    Query parameters:
+    - date: Optional date string (YYYY-MM-DD). If not provided, cleans today's date.
+    - all_dates: If 'true', cleans all dates (use with caution)
+    """
+    try:
+        if not SUPABASE_AVAILABLE or not supabase_client:
+            return jsonify({"error": "Supabase not available"}), 500
+        
+        # Get date parameter or use today
+        date_param = request.args.get('date')
+        all_dates = request.args.get('all_dates', 'false').lower() == 'true'
+        
+        if all_dates:
+            date_str = "all_dates"
+            # Delete all ratio_analysis records
+            result = supabase_client.table("ratio_analysis").delete().neq("id", "never_delete").execute()
+            deleted_count = len(result.data) if result.data else 0
+        elif date_param:
+            date_str = date_param
+            # Validate date format
+            try:
+                datetime.strptime(date_str, "%Y-%m-%d")
+            except ValueError:
+                return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+            # Delete ratio_analysis for specific date
+            result = supabase_client.table("ratio_analysis").delete().eq("date_str", date_str).execute()
+            deleted_count = len(result.data) if result.data else 0
+        else:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            # Delete ratio_analysis for today
+            result = supabase_client.table("ratio_analysis").delete().eq("date_str", date_str).execute()
+            deleted_count = len(result.data) if result.data else 0
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Deleted {deleted_count} ratio_analysis records",
+            "date": date_str,
+            "deleted_count": deleted_count
+        })
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error in cleanup_ratio_analysis: {error_details}", flush=True)
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "traceback": error_details
+        }), 500
+
 @app.route('/progress', methods=['GET'])
 def get_progress():
     """Get current analysis progress"""
@@ -3383,25 +3437,7 @@ def get_z_scored_stocks_from_supabase(date_str=None):
         traceback.print_exc()
         return []
 
-def load_z_score_from_supabase(ticker, date_str=None):
-    """Load z-score data for a specific stock from Supabase"""
-    if not supabase_client:
-        return None
-    
-    try:
-        if date_str is None:
-            date_str = datetime.now().strftime("%Y-%m-%d")
-        
-        result = supabase_client.table("stock_data").select("*").eq("ticker", ticker).eq("stage", "z_scored").eq("date_str", date_str).execute()
-        
-        if result.data and len(result.data) > 0:
-            record = result.data[0]
-            return record.get("data", {})
-        else:
-            return None
-    except Exception as e:
-        print(f"  ⚠ Error loading z-score for {ticker} from Supabase: {e}", flush=True)
-        return None
+# REMOVED: Duplicate function - using the one at line 2983 that queries z_scores table correctly
 
 def clear_supabase_checkpoints():
     """Clear all checkpoints from Supabase (use with caution!)"""
@@ -4294,6 +4330,8 @@ def run_analysis_logic(force_refresh=False):
                     print(f"  📊 Found {len(supabase_z_scored)} z-scored stocks in Supabase (source of truth)", flush=True)
                     
                     # Load all z-scored stocks from Supabase
+                    loaded_count = 0
+                    failed_count = 0
                     for ticker in supabase_z_scored:
                         z_data = load_z_score_from_supabase(ticker, date_str)
                         if z_data:
@@ -4312,8 +4350,15 @@ def run_analysis_logic(force_refresh=False):
                                     "avg_score": z_data.get("avg_score", 0.0)
                                 })
                                 processed_tickers_from_checkpoint.append(ticker)
+                                loaded_count += 1
+                            else:
+                                print(f"  ⚠ Could not find sector for {ticker} - skipping from results", flush=True)
+                                failed_count += 1
+                        else:
+                            print(f"  ⚠ Could not load z-score data for {ticker} from Supabase", flush=True)
+                            failed_count += 1
                     
-                    print(f"  ✓ Loaded {len(results)} z-scored stocks from Supabase", flush=True)
+                    print(f"  ✓ Loaded {loaded_count} z-scored stocks from Supabase ({failed_count} failed)", flush=True)
                     
                     # CRITICAL: Only stocks with z-scores in Supabase are considered "processed"
                     # Stocks in checkpoint but not in Supabase will be processed (not skipped)
