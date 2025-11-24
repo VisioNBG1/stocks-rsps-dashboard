@@ -2947,7 +2947,7 @@ def load_checkpoint_from_supabase(checkpoint_id=None):
                         print(f"  🔍 Checkpoint contains {downloaded_count} downloaded stocks", flush=True)
                 except:
                     pass
-            if isinstance(data_value, str):
+                
                 # Parse JSON string back to dict
                 try:
                     data = json.loads(data_value)
