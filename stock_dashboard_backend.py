@@ -3608,16 +3608,36 @@ def run_analysis_logic(force_refresh=False):
                     analysis_progress["message"] = "Loaded from cache"
                     return cached_data  # Return dict, not jsonify
                 else:
-                    # Partial cache - resume from checkpoint
-                    resume_from_stage = checkpoint_stage if checkpoint_stage else None
+                    # Partial cache - resume from checkpoint, but use Supabase to determine actual stage
+                    # If Supabase shows we're further along, use that stage instead
+                    if actual_stage_from_supabase and checkpoint_stage:
+                        # Compare stages - Supabase is more accurate
+                        stage_priority = {"downloading": 1, "stock_analysis": 2, "stock_analysis_complete": 3, "ratio_analysis": 4, "ratio_analysis_complete": 5}
+                        checkpoint_priority = stage_priority.get(checkpoint_stage, 0)
+                        supabase_priority = stage_priority.get(actual_stage_from_supabase, 0)
+                        
+                        if supabase_priority > checkpoint_priority:
+                            print(f"  ⚠ Checkpoint stage ({checkpoint_stage}) is behind Supabase stage ({actual_stage_from_supabase})", flush=True)
+                            print(f"  🔄 Using Supabase stage: {actual_stage_from_supabase}", flush=True)
+                            resume_from_stage = actual_stage_from_supabase
+                            # Update checkpoint stage
+                            cached_data["_stage"] = actual_stage_from_supabase
+                            save_cache(cached_data, is_partial=True, stage=actual_stage_from_supabase, processed_tickers=supabase_downloaded)
+                        else:
+                            resume_from_stage = checkpoint_stage if checkpoint_stage else None
+                    else:
+                        resume_from_stage = checkpoint_stage if checkpoint_stage else None
+                    
                     print(f"✓ Found partial cache - resuming from stage: {resume_from_stage}", flush=True)
                     if resume_from_stage == "downloading":
-                        downloaded_stocks = cached_data.get("downloaded_stocks", [])
-                        if not isinstance(downloaded_stocks, list):
-                            downloaded_stocks = []
-                        print(f"  Resuming from downloading stage - {len(downloaded_stocks)} stocks already downloaded", flush=True)
-                        if downloaded_stocks:
-                            print(f"  Already downloaded: {', '.join(sorted(downloaded_stocks)[:10])}{'...' if len(downloaded_stocks) > 10 else ''}", flush=True)
+                        # Use Supabase count, not checkpoint
+                        print(f"  Resuming from downloading stage - {len(supabase_downloaded)} stocks already downloaded (from Supabase)", flush=True)
+                        if supabase_downloaded:
+                            print(f"  Already downloaded: {', '.join(sorted(supabase_downloaded)[:10])}{'...' if len(supabase_downloaded) > 10 else ''}", flush=True)
+                    elif resume_from_stage == "stock_analysis":
+                        print(f"  Resuming from stock_analysis stage - {len(supabase_z_scored)} stocks already z-scored (from Supabase)", flush=True)
+                        if supabase_z_scored:
+                            print(f"  Already z-scored: {', '.join(sorted(supabase_z_scored)[:10])}{'...' if len(supabase_z_scored) > 10 else ''}", flush=True)
                     elif resume_from_stage == "stock_analysis_complete":
                         print("  Resuming from ratio analysis (stock analysis already complete)", flush=True)
                     elif resume_from_stage == "ratio_analysis_complete":
