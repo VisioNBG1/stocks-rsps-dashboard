@@ -4192,15 +4192,8 @@ def get_analysis_results():
         import traceback
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
+
 # --- Keep-Alive Thread (prevents services from spinning down) ---
-def start_keepalive():
-    """Periodically hit health endpoint to keep service alive (Render, Fly.io, etc.)"""
-                
-                # Invalid checkpoint detection: if stage indicates incomplete work, treat as partial
-                incomplete_stages = ["downloading", "stock_analysis", "ratio_analysis"]
-                is_actually_partial = is_partial_flag or (checkpoint_stage in incomplete_stages)
-                
-                # If Supabase shows more progress than checkpoint, use Supabase as source of truth
                 checkpoint_downloaded = cached_data.get("downloaded_stocks", [])
                 if not isinstance(checkpoint_downloaded, list):
                     checkpoint_downloaded = []
