@@ -4190,7 +4190,7 @@ def get_analysis_results():
 
 # --- Keep-Alive Thread (prevents services from spinning down) ---
 def start_keepalive():
-                is_partial_flag = cached_data.get("_partial", False)
+    """Periodically hit health endpoint to keep service alive (Render, Fly.io, etc.)"""
                 
                 # Invalid checkpoint detection: if stage indicates incomplete work, treat as partial
                 incomplete_stages = ["downloading", "stock_analysis", "ratio_analysis"]
