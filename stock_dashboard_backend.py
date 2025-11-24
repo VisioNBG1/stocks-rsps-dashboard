@@ -4241,7 +4241,10 @@ def start_background_analysis():
             # Validate checkpoint: if stage is "downloading" or "stock_analysis", it's partial even if _partial is False
             checkpoint_stage = cached_data.get("_stage", "")
             is_partial_flag = cached_data.get("_partial", False)
-                    print(f"  ✓ Checkpoint updated to match Supabase", flush=True)
+            
+            # Invalid checkpoint detection: if stage indicates incomplete work, treat as partial
+            incomplete_stages = ["downloading", "stock_analysis", "ratio_analysis"]
+            is_actually_partial = is_partial_flag or (checkpoint_stage in incomplete_stages)
                     checkpoint_updated = True
                     # Recalculate is_actually_partial after updating checkpoint
                     incomplete_stages = ["downloading", "stock_analysis", "ratio_analysis"]
