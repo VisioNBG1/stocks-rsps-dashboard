@@ -4224,9 +4224,10 @@ def start_keepalive():
     keepalive_thread = threading.Thread(target=keepalive_loop, daemon=True)
     keepalive_thread.start()
     print("✓ Keep-alive thread started (will ping every 2 minutes to prevent spin-down)", flush=True)
-                    print(f"  🔄 Using Supabase as source of truth and updating checkpoint...", flush=True)
-                    # Update checkpoint to match Supabase
-                    cached_data["downloaded_stocks"] = supabase_downloaded
+
+
+# --- Background Analysis Thread ---
+def start_background_analysis():
                     cached_data["_partial"] = True
                     # Use actual stage from Supabase
                     if actual_stage_from_supabase:
