@@ -4251,12 +4251,14 @@ def start_background_analysis():
                 print("="*60 + "\n", flush=True)
                 # Don't return - continue to start analysis which will resume from checkpoint
                 print("🚀 Resuming analysis from checkpoint...", flush=True)
-                    analysis_progress["message"] = "Loaded from cache"
-                    return cached_data  # Return dict, not jsonify
-                else:
-                    # Partial cache - resume from checkpoint, but use Supabase to determine actual stage
-                    # If Supabase shows we're further along, use that stage instead
-                    if actual_stage_from_supabase and checkpoint_stage:
+            else:
+                # Only treat as complete if it has sectors data and no incomplete stage
+                if "sectors" in cached_data and checkpoint_stage not in incomplete_stages:
+                    print("✓ Cache found - analysis already completed", flush=True)
+                    print("="*60 + "\n", flush=True)
+                    global analysis_progress
+                    analysis_progress["status"] = "complete"
+                    analysis_progress["results"] = cached_data
                         # Compare stages - Supabase is more accurate
                         stage_priority = {"downloading": 1, "stock_analysis": 2, "stock_analysis_complete": 3, "ratio_analysis": 4, "ratio_analysis_complete": 5}
                         checkpoint_priority = stage_priority.get(checkpoint_stage, 0)
