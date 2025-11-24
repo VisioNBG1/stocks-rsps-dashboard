@@ -1234,6 +1234,86 @@ def status_check():
         }
     }), 200
 
+@app.route('/cleanup-duplicates', methods=['POST', 'GET'])
+def cleanup_duplicates():
+    """Clean up duplicate entries in Supabase stock_data table"""
+    try:
+        if not SUPABASE_AVAILABLE or not supabase_client:
+            return jsonify({"error": "Supabase not available"}), 500
+        
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        # Get all downloaded stocks from stock_data
+        result = supabase_client.table("stock_data").select("ticker, id, created_at").eq("stage", "downloaded").eq("date_str", date_str).order("id").execute()
+        
+        if not result.data:
+            return jsonify({
+                "status": "success",
+                "message": "No records found",
+                "date": date_str,
+                "duplicates_found": 0,
+                "duplicates_deleted": 0,
+                "unique_stocks": 0
+            })
+        
+        all_records = result.data
+        
+        # Group by ticker to find duplicates
+        ticker_counts = {}
+        for record in all_records:
+            ticker = record.get("ticker")
+            if ticker not in ticker_counts:
+                ticker_counts[ticker] = []
+            ticker_counts[ticker].append(record)
+        
+        # Find duplicates
+        duplicates = {t: records for t, records in ticker_counts.items() if len(records) > 1}
+        
+        deleted_count = 0
+        deleted_details = []
+        
+        if duplicates:
+            # Delete duplicates (keep the one with the smallest ID, which should be oldest)
+            for ticker, records in duplicates.items():
+                # Sort by ID, keep first (oldest), delete rest
+                sorted_records = sorted(records, key=lambda x: x['id'])
+                to_delete = sorted_records[1:]  # All except the first
+                
+                for record in to_delete:
+                    try:
+                        supabase_client.table("stock_data").delete().eq("id", record['id']).execute()
+                        deleted_count += 1
+                        deleted_details.append({"ticker": ticker, "id": record['id']})
+                    except Exception as e:
+                        print(f"Error deleting {ticker} (ID: {record['id']}): {e}", flush=True)
+        
+        # Get unique tickers after cleanup
+        result = supabase_client.table("stock_data").select("ticker").eq("stage", "downloaded").eq("date_str", date_str).execute()
+        unique_tickers = list(set([r.get("ticker") for r in result.data if r.get("ticker")]))
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Cleanup completed. Deleted {deleted_count} duplicate entries.",
+            "date": date_str,
+            "total_records_before": len(all_records),
+            "duplicates_found": len(duplicates),
+            "duplicates_deleted": deleted_count,
+            "unique_stocks": len(unique_tickers),
+            "deleted_details": deleted_details[:20],  # Limit to first 20 for response size
+            "expected_stocks": 334,
+            "status_check": "perfect" if len(unique_tickers) == 334 else ("too_many" if len(unique_tickers) > 334 else "too_few")
+        })
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error in cleanup_duplicates: {error_details}", flush=True)
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "traceback": error_details
+        }), 500
+
 @app.route('/progress', methods=['GET'])
 def get_progress():
     """Get current analysis progress"""
