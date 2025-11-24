@@ -3499,6 +3499,60 @@ def get_z_scored_stocks_from_supabase(date_str=None):
 
 # REMOVED: Duplicate function - using the one at line 2983 that queries z_scores table correctly
 
+def check_ratio_analysis_exists_in_supabase(date_str=None):
+    """Check if ratio analysis exists in Supabase for a given date"""
+    if not supabase_client:
+        return False
+    if date_str is None:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+    try:
+        result = supabase_client.table("ratio_analysis").select("ticker").eq("date_str", date_str).limit(1).execute()
+        return len(result.data) > 0 if result.data else False
+    except:
+        return False
+
+def check_backtest_exists_in_supabase(date_str=None):
+    """Check if backtest exists in Supabase for a given date"""
+    if not supabase_client:
+        return False
+    if date_str is None:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+    try:
+        result = supabase_client.table("backtest_results").select("id").eq("date_str", date_str).limit(1).execute()
+        return len(result.data) > 0 if result.data else False
+    except:
+        return False
+
+def get_current_stage_from_supabase(date_str=None, all_tickers=None):
+    """
+    Determine current stage by checking Supabase directly (no checkpoints).
+    Returns: 'downloading', 'z_scoring', 'ratio_analysis', 'backtest', or 'complete'
+    """
+    if date_str is None:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+    if all_tickers is None:
+        all_tickers = get_all_stock_tickers()
+    
+    # Check downloaded stocks
+    downloaded = get_downloaded_stocks_from_supabase(date_str)
+    if len(downloaded) < len(all_tickers):
+        return 'downloading'
+    
+    # Check z-scored stocks
+    z_scored = get_z_scored_stocks_from_supabase(date_str)
+    if len(z_scored) < len(all_tickers):
+        return 'z_scoring'
+    
+    # Check ratio analysis
+    if not check_ratio_analysis_exists_in_supabase(date_str):
+        return 'ratio_analysis'
+    
+    # Check backtest
+    if not check_backtest_exists_in_supabase(date_str):
+        return 'backtest'
+    
+    return 'complete'
+
 def clear_supabase_checkpoints():
     """Clear all checkpoints from Supabase (use with caution!)"""
     if not supabase_client:
