@@ -4193,15 +4193,11 @@ def get_analysis_results():
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
 
-# --- Keep-Alive Thread (prevents services from spinning down) ---
-def start_keepalive():
-    """Periodically hit health endpoint to keep service alive (Render, Fly.io, etc.)"""
-    def keepalive_loop():
-        from urllib.request import urlopen
-        from urllib.error import URLError
-        import time
-        
-        while True:
+@app.route('/update-status', methods=['GET'])
+def update_status():
+    """Endpoint to get the current status of the analysis"""
+    global analysis_progress
+    return jsonify(analysis_progress)
             try:
                 # Wait 2 minutes between keep-alive requests (more frequent for Fly.io)
                 time.sleep(120)  # 2 minutes
