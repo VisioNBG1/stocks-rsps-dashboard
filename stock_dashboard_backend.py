@@ -5918,9 +5918,8 @@ def get_analysis_results():
         }), 500
 
 
-if __name__ == '__main__':
-    """Start analysis automatically in background thread after a short delay"""
-    def run_analysis():
+# Cleanup old data on startup using Supabase API
+def cleanup_old_data_on_startup():
         # Wait 10 seconds for server to fully start
         time.sleep(10)
         
