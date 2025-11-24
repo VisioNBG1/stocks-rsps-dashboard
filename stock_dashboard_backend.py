@@ -3101,7 +3101,7 @@ def save_z_score_to_supabase(ticker, z_avg, avg_score, sector, analysis_result, 
 def load_z_score_from_supabase(ticker, date_str=None):
     """Load z-score data from Supabase z_scores table"""
     if not supabase_client:
-    return None
+        return None
 
     try:
         if date_str is None:
