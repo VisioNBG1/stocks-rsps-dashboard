@@ -4177,10 +4177,19 @@ def run_analysis_logic(force_refresh=False):
         analysis_lock.release()
 
 @app.route('/analyze', methods=['GET'])
-            cached_data = load_cache()
-            if cached_data:
-                # Validate checkpoint: if stage is "downloading" or "stock_analysis", it's partial even if _partial is False
-                checkpoint_stage = cached_data.get("_stage", "")
+def get_analysis_results():
+    """
+    HTTP endpoint that calls the core analysis logic.
+    """
+    try:
+        force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+        return run_analysis_logic(force_refresh=force_refresh)
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+# --- Keep-Alive Thread (prevents services from spinning down) ---
+def start_keepalive():
                 is_partial_flag = cached_data.get("_partial", False)
                 
                 # Invalid checkpoint detection: if stage indicates incomplete work, treat as partial
