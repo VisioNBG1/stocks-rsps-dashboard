@@ -4417,7 +4417,19 @@ def run_analysis_logic(force_refresh=False):
                 for ticker in sorted(tickers):
                     # Skip if already processed (resuming from checkpoint)
                     if ticker in processed_tickers_from_checkpoint:
-                        print(f"  ⏭ Skipping {ticker} (already processed in checkpoint)", flush=True)
+                        # Check if z-score exists in Supabase and load it
+                        z_data = load_z_score_from_supabase(ticker, date_str)
+                        if z_data:
+                            # Add to results if z-score found in Supabase
+                            results.append({
+                                "sector": sector,
+                                "ticker": ticker,
+                                "z_avg": z_data.get("z_avg", 0.0),
+                                "avg_score": z_data.get("avg_score", 0.0)
+                            })
+                            print(f"  ✓ Loaded {ticker} z-scores from Supabase (already processed)", flush=True)
+                        else:
+                            print(f"  ⏭ Skipping {ticker} (already processed in checkpoint, no z-score in Supabase)", flush=True)
                         continue
                     
                     # Check timeout before processing each ticker
