@@ -4441,11 +4441,20 @@ def run_analysis_logic(force_refresh=False):
                         # Checkpoint is at downloading stage - stocks need to be processed
                         print(f"  ℹ Checkpoint is at downloading stage - will process loaded stocks", flush=True)
         
-        # Process stocks if we have batch_data and haven't loaded results from checkpoint
-        if batch_data and not results:
-            # Process downloaded data
+        # Process stocks if we have batch_data
+        # CRITICAL: Process remaining stocks even if we already loaded some results from Supabase
+        # Initialize results and processed_tickers if not already initialized
+        if 'results' not in locals():
             results = []
-            processed_tickers = []  # Track processed tickers for checkpoint
+        if 'processed_tickers' not in locals():
+            # Initialize with already processed stocks from checkpoint/Supabase
+            if 'processed_tickers_from_checkpoint' in locals():
+                processed_tickers = list(processed_tickers_from_checkpoint)
+            else:
+                processed_tickers = []
+        
+        if batch_data:
+            # Process downloaded data - continue processing remaining stocks
             # Sort sectors for deterministic processing order
             for sector in sorted(SECTORS.keys()):
                 # Check timeout before processing each sector
@@ -4891,10 +4900,46 @@ def run_analysis_logic(force_refresh=False):
         
         if resume_from_stage != "ratio_analysis_complete":
             try:
-                # Get all unique tickers - SORT for deterministic results
-                all_tickers = sorted(list(results_df['ticker'].unique()))
-                print(f"  Calculating ratio analysis for {len(all_tickers)} stocks...", flush=True)
-                sys.stdout.flush()
+                # CRITICAL: Get ALL z-scored stocks from Supabase for ratio analysis, not just current results
+                # This ensures ratio analysis compares against all 332 stocks, not just the 48 processed in this run
+                date_str = datetime.now().strftime("%Y-%m-%d")
+                try:
+                    all_z_scored_tickers = get_z_scored_stocks_from_supabase(date_str)
+                    print(f"  📊 Found {len(all_z_scored_tickers)} z-scored stocks in Supabase for ratio analysis", flush=True)
+                    
+                    # Build results_df from all z-scored stocks in Supabase
+                    all_results = []
+                    for ticker in all_z_scored_tickers:
+                        z_data = load_z_score_from_supabase(ticker, date_str)
+                        if z_data:
+                            # Find sector for this ticker
+                            sector_name = None
+                            for sec_name, sec_tickers in SECTORS.items():
+                                if ticker in sec_tickers:
+                                    sector_name = sec_name
+                                    break
+                            
+                            if sector_name:
+                                all_results.append({
+                                    "sector": sector_name,
+                                    "ticker": ticker,
+                                    "z_avg": z_data.get("z_avg", 0.0),
+                                    "avg_score": z_data.get("avg_score", 0.0)
+                                })
+                    
+                    # Use all z-scored stocks from Supabase for ratio analysis
+                    all_tickers = sorted([r["ticker"] for r in all_results])
+                    print(f"  Calculating ratio analysis for {len(all_tickers)} stocks (from Supabase)...", flush=True)
+                    sys.stdout.flush()
+                    
+                    # Rebuild results_df with all z-scored stocks
+                    results_df = pd.DataFrame(all_results)
+                except Exception as e:
+                    print(f"  ⚠ Could not load all z-scored stocks from Supabase: {e}, using current results", flush=True)
+                    # Fallback to current results
+                    all_tickers = sorted(list(results_df['ticker'].unique()))
+                    print(f"  Calculating ratio analysis for {len(all_tickers)} stocks (from current results)...", flush=True)
+                    sys.stdout.flush()
                 
                 # Calculate ratio scores: each stock against all others
                 ratio_scores = {}
