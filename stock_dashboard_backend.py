@@ -5918,40 +5918,7 @@ def get_analysis_results():
         }), 500
 
 
-# --- Keep-Alive Thread (prevents services from spinning down) ---
-def start_keepalive():
-    """Periodically hit health endpoint to keep service alive (Render, Fly.io, etc.)"""
-    def keepalive_loop():
-        from urllib.request import urlopen
-        from urllib.error import URLError
-        import time
-        
-        while True:
-            try:
-                # Wait 2 minutes between keep-alive requests (more frequent for Fly.io)
-                time.sleep(120)  # 2 minutes
-                
-                # Make a request to health endpoint to keep service alive
-                try:
-                    port = os.environ.get('PORT', '8080')
-                    url = f'http://localhost:{port}/health'
-                    with urlopen(url, timeout=5) as response:
-                        status = response.getcode()
-                        print(f"✓ Keep-alive ping sent (status: {status})", flush=True)
-                except (URLError, OSError) as e:
-                    # Ignore keep-alive errors - they're non-critical
-                    print(f"⚠ Keep-alive ping failed (non-critical): {e}", flush=True)
-            except Exception as e:
-                print(f"⚠ Keep-alive error (non-critical): {e}", flush=True)
-                time.sleep(60)  # Wait 1 minute before retrying
-    
-    # Start keep-alive thread
-    keepalive_thread = threading.Thread(target=keepalive_loop, daemon=True)
-    keepalive_thread.start()
-    print("✓ Keep-alive thread started (will ping every 2 minutes to prevent spin-down)", flush=True)
-
-# --- Background Analysis Thread ---
-def start_background_analysis():
+if __name__ == '__main__':
     """Start analysis automatically in background thread after a short delay"""
     def run_analysis():
         # Wait 10 seconds for server to fully start
