@@ -1355,6 +1355,66 @@ def cleanup_duplicates():
             "traceback": error_details
         }), 500
 
+@app.route('/cleanup-all-data', methods=['POST', 'GET'])
+def cleanup_all_data():
+    """Delete ALL data from Supabase tables (stock_data, z_scores, ratio_analysis, checkpoints)
+    
+    This endpoint completely clears all analysis data to start fresh.
+    Use with caution!
+    """
+    try:
+        if not SUPABASE_AVAILABLE or not supabase_client:
+            return jsonify({"error": "Supabase not available"}), 500
+        
+        deleted_counts = {}
+        
+        # Delete from stock_data table
+        try:
+            result = supabase_client.table("stock_data").delete().neq("id", "never_delete").execute()
+            deleted_counts["stock_data"] = len(result.data) if result.data else 0
+        except Exception as e:
+            deleted_counts["stock_data"] = f"Error: {str(e)}"
+        
+        # Delete from z_scores table
+        try:
+            result = supabase_client.table("z_scores").delete().neq("id", "never_delete").execute()
+            deleted_counts["z_scores"] = len(result.data) if result.data else 0
+        except Exception as e:
+            deleted_counts["z_scores"] = f"Error: {str(e)}"
+        
+        # Delete from ratio_analysis table
+        try:
+            result = supabase_client.table("ratio_analysis").delete().neq("id", "never_delete").execute()
+            deleted_counts["ratio_analysis"] = len(result.data) if result.data else 0
+        except Exception as e:
+            deleted_counts["ratio_analysis"] = f"Error: {str(e)}"
+        
+        # Delete from checkpoints table
+        try:
+            result = supabase_client.table("checkpoints").delete().neq("id", "never_delete").execute()
+            deleted_counts["checkpoints"] = len(result.data) if result.data else 0
+        except Exception as e:
+            deleted_counts["checkpoints"] = f"Error: {str(e)}"
+        
+        total_deleted = sum([v for v in deleted_counts.values() if isinstance(v, int)])
+        
+        return jsonify({
+            "status": "success",
+            "message": f"All data deleted. Total records removed: {total_deleted}",
+            "deleted_counts": deleted_counts,
+            "total_deleted": total_deleted
+        })
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error in cleanup_all_data: {error_details}", flush=True)
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "traceback": error_details
+        }), 500
+
 @app.route('/cleanup-ratio-analysis', methods=['POST', 'GET'])
 def cleanup_ratio_analysis():
     """Clean up ratio_analysis table data
@@ -2897,7 +2957,7 @@ def load_checkpoint_from_supabase(checkpoint_id=None):
                         data["_partial"] = True
                         data["_stage"] = checkpoint_stage
                     print(f"  ✓ Checkpoint loaded from Supabase (stage: {checkpoint_record.get('stage', 'unknown')}, {len(data)} keys)", flush=True)
-                    return data
+                return data
                 except json.JSONDecodeError as json_err:
                     print(f"  ⚠ Failed to parse JSON from Supabase: {json_err}", flush=True)
                     print(f"  📄 Data preview: {data_value[:200] if len(str(data_value)) > 200 else data_value}...", flush=True)
@@ -2919,11 +2979,11 @@ def load_checkpoint_from_supabase(checkpoint_id=None):
         else:
             print(f"  ℹ No checkpoint found in Supabase (table may be empty or query returned no results)", flush=True)
             return None
-    except Exception as e:
+        except Exception as e:
         print(f"  ⚠ Failed to load checkpoint from Supabase: {e}", flush=True)
         import traceback
         traceback.print_exc()
-        return None
+            return None
 
 def save_stock_data_to_supabase(ticker, stage, data, date_str=None):
     """Save stock data to Supabase stock_data table"""
@@ -2973,7 +3033,7 @@ def save_stock_data_to_supabase(ticker, stage, data, date_str=None):
                     print(f"  ⚠ Warning: Column mismatch for {ticker} - {num_cols} cols vs {num_data_cols} data cols", flush=True)
         elif isinstance(data, dict):
             data_dict = data
-        else:
+    else:
             # Try to serialize other types
             data_dict = json.loads(json.dumps(data, default=str))
         
@@ -3037,8 +3097,8 @@ def save_z_score_to_supabase(ticker, z_avg, avg_score, sector, analysis_result, 
 def load_z_score_from_supabase(ticker, date_str=None):
     """Load z-score data from Supabase z_scores table"""
     if not supabase_client:
-        return None
-    
+    return None
+
     try:
         if date_str is None:
             date_str = datetime.now().strftime("%Y-%m-%d")
@@ -3860,7 +3920,7 @@ def run_analysis_logic(force_refresh=False):
                             if len(ticker_data.columns) >= 4:
                                 batch_data[ticker] = ticker_data
                                 print(f"  ✓ Loaded {ticker} from Supabase ({len(ticker_data)} rows)", flush=True)
-                            else:
+        else:
                                 print(f"  ⚠ {ticker} has invalid structure, skipping", flush=True)
                         elif isinstance(ticker_data, dict):
                             try:
@@ -4050,7 +4110,7 @@ def run_analysis_logic(force_refresh=False):
             # This is slower but more reliable for rate-limited IPs
             # Note: batch_data may already contain cached stocks from resume, so don't overwrite it
             if "batch_data" not in locals() or batch_data is None:
-                batch_data = {}
+            batch_data = {}
             download_delay = 15  # 15 seconds between downloads (reduced from 20s to speed up)
             rate_limit_wait = 60  # 60 seconds if rate limited
             
@@ -4155,13 +4215,13 @@ def run_analysis_logic(force_refresh=False):
                             
                             # Save checkpoint after every successful download (not just every 5)
                             # This ensures that if deployment is killed, we don't lose progress
-                            partial_response = {
-                                "_partial": True,
-                                "_stage": "downloading",
+                                partial_response = {
+                                    "_partial": True,
+                                    "_stage": "downloading",
                                 "downloaded_stocks": all_downloaded,
-                                "progress": f"{idx}/{len(all_tickers)} stocks downloaded"
-                            }
-                            try:
+                                    "progress": f"{idx}/{len(all_tickers)} stocks downloaded"
+                                }
+                                try:
                                 save_cache(partial_response, is_partial=True, stage="downloading", processed_tickers=all_downloaded)
                                 # Always print checkpoint save to verify it's working
                                 print(f"  💾 Checkpoint saved: {ticker} added ({len(all_downloaded)} total stocks in checkpoint)", flush=True)
@@ -4287,8 +4347,8 @@ def run_analysis_logic(force_refresh=False):
             else:
                 print(f"  ✓ Successfully downloaded {len(batch_data)}/{len(all_tickers)} stocks", flush=True)
             
-            print(f"  Starting to process {len(batch_data)} downloaded stocks...", flush=True)
-            sys.stdout.flush()
+                print(f"  Starting to process {len(batch_data)} downloaded stocks...", flush=True)
+                sys.stdout.flush()
         
         # Initialize results list early (needed for all code paths)
         results = []
@@ -4356,7 +4416,7 @@ def run_analysis_logic(force_refresh=False):
                                 })
                                 processed_tickers_from_checkpoint.append(ticker)
                                 loaded_count += 1
-                            else:
+        else:
                                 print(f"  ⚠ Could not find sector for {ticker} - skipping from results", flush=True)
                                 failed_count += 1
                         else:
@@ -4430,7 +4490,7 @@ def run_analysis_logic(force_refresh=False):
                         
                         # Reconstruct results from checkpoint (only for stocks with z-scores in Supabase)
                         if "sectors" in cached_data:
-                            results = []
+            results = []
                             for sector in cached_data["sectors"]:
                                 for stock in sector.get("stocks", []):
                                     ticker = stock["ticker"]
@@ -4629,7 +4689,7 @@ def run_analysis_logic(force_refresh=False):
                                             if stock_elapsed < timeout_seconds:
                                                 if stock_elapsed % 15 == 0:  # Only print every 15 seconds to reduce log spam
                                                     print(f"      ... {ticker} still analyzing ({stock_elapsed}s elapsed, {main_elapsed:.0f}s total)...", flush=True)
-                                                    sys.stdout.flush()
+                                                sys.stdout.flush()
                                                 # Check for timeout checkpoint during long analysis (check every 5 seconds)
                                                 if check_timeout_and_save_checkpoint("stock_analysis", {"sectors": []}, processed_tickers):
                                                     progress_stop.set()
@@ -4693,9 +4753,9 @@ def run_analysis_logic(force_refresh=False):
                                         
                                         try:
                                             result = future.result(timeout=check_interval)
-                                            progress_stop.set()  # Stop progress monitor
+                                    progress_stop.set()  # Stop progress monitor
                                             break  # Got result, exit loop
-                                        except FutureTimeoutError:
+                                except FutureTimeoutError:
                                             elapsed_wait += check_interval
                                             continue  # Continue waiting
                                     
@@ -4711,25 +4771,25 @@ def run_analysis_logic(force_refresh=False):
                                     if "TIMEOUT_CHECKPOINT" in str(e):
                                         raise  # Re-raise timeout checkpoint exception
                                     elif isinstance(e, FutureTimeoutError):
-                                        progress_stop.set()  # Stop progress monitor
+                                    progress_stop.set()  # Stop progress monitor
                                         elapsed_total = time.time() - stock_start_time
-                                        print(f"  ⚠ {ticker} analysis timed out after {timeout_seconds}s (attempt {attempt}/{max_retries}, total elapsed: {elapsed_total:.1f}s)", flush=True)
-                                        sys.stdout.flush()
+                                    print(f"  ⚠ {ticker} analysis timed out after {timeout_seconds}s (attempt {attempt}/{max_retries}, total elapsed: {elapsed_total:.1f}s)", flush=True)
+                                    sys.stdout.flush()
                                         try:
-                                            future.cancel()
+                                    future.cancel()
                                         except:
                                             pass
-                                        result = None
-                                        if attempt < max_retries:
-                                            print(f"    Waiting 10s before retry...", flush=True)
-                                            sys.stdout.flush()
-                                            time.sleep(10)
+                                    result = None
+                                    if attempt < max_retries:
+                                        print(f"    Waiting 10s before retry...", flush=True)
+                                        sys.stdout.flush()
+                                        time.sleep(10)
                                             stock_start_time = time.time()  # Reset timer for retry
-                                            continue
-                                        else:
-                                            print(f"  ✗ {ticker}: Failed after {max_retries} attempts (timeout)", flush=True)
-                                            sys.stdout.flush()
-                                            break
+                                        continue
+                                    else:
+                                        print(f"  ✗ {ticker}: Failed after {max_retries} attempts (timeout)", flush=True)
+                                        sys.stdout.flush()
+                                        break
                                     else:
                                         raise  # Re-raise other exceptions
                             
@@ -4818,7 +4878,7 @@ def run_analysis_logic(force_refresh=False):
         # Initialize results if not already initialized (e.g., when resuming from checkpoint)
         if 'results' not in locals():
             results = []
-        
+
         print(f"\n✓ Finished processing {len(results)} stocks", flush=True)
         sys.stdout.flush()
 
@@ -4942,9 +5002,9 @@ def run_analysis_logic(force_refresh=False):
                 except Exception as e:
                     print(f"  ⚠ Could not load all z-scored stocks from Supabase: {e}, using current results", flush=True)
                     # Fallback to current results
-                    all_tickers = sorted(list(results_df['ticker'].unique()))
+                all_tickers = sorted(list(results_df['ticker'].unique()))
                     print(f"  Calculating ratio analysis for {len(all_tickers)} stocks (from current results)...", flush=True)
-                    sys.stdout.flush()
+                sys.stdout.flush()
                 
                 # Calculate ratio scores: each stock against all others
                 ratio_scores = {}
@@ -5038,7 +5098,7 @@ def run_analysis_logic(force_refresh=False):
                                                 if ratio_elapsed < timeout_seconds:
                                                     if ratio_elapsed % 15 == 0:  # Only print every 15 seconds to reduce log spam
                                                         print(f"      ... {ticker1}/{ticker2} still calculating ({ratio_elapsed}s elapsed, {main_elapsed:.0f}s total)...", flush=True)
-                                                        sys.stdout.flush()
+                                                    sys.stdout.flush()
                                                     # Check for timeout checkpoint during long ratio calculation (check every 5 seconds)
                                                     if check_timeout_and_save_checkpoint("ratio_analysis", {"sectors": output_sectors}, []):
                                                         progress_stop.set()
@@ -5082,9 +5142,9 @@ def run_analysis_logic(force_refresh=False):
                                             
                                             try:
                                                 ratio_score = future.result(timeout=check_interval)
-                                                progress_stop.set()  # Stop progress monitor
+                                        progress_stop.set()  # Stop progress monitor
                                                 break  # Got result, exit loop
-                                            except FutureTimeoutError:
+                                    except FutureTimeoutError:
                                                 elapsed_wait += check_interval
                                                 continue  # Continue waiting
                                         
@@ -5100,25 +5160,25 @@ def run_analysis_logic(force_refresh=False):
                                         if "TIMEOUT_CHECKPOINT" in str(e):
                                             raise  # Re-raise timeout checkpoint exception
                                         elif isinstance(e, FutureTimeoutError):
-                                            progress_stop.set()  # Stop progress monitor
+                                        progress_stop.set()  # Stop progress monitor
                                             elapsed_total = time.time() - ratio_start_time
-                                            print(f"      ⚠ {ticker1}/{ticker2} timed out after {timeout_seconds}s (attempt {attempt}/{max_retries}, total elapsed: {elapsed_total:.1f}s)", flush=True)
-                                            sys.stdout.flush()
+                                        print(f"      ⚠ {ticker1}/{ticker2} timed out after {timeout_seconds}s (attempt {attempt}/{max_retries}, total elapsed: {elapsed_total:.1f}s)", flush=True)
+                                        sys.stdout.flush()
                                             try:
-                                                future.cancel()
+                                        future.cancel()
                                             except:
                                                 pass
-                                            ratio_score = None
-                                            if attempt < max_retries:
-                                                print(f"        Waiting 5s before retry...", flush=True)
-                                                sys.stdout.flush()
-                                                time.sleep(5)
+                                        ratio_score = None
+                                        if attempt < max_retries:
+                                            print(f"        Waiting 5s before retry...", flush=True)
+                                            sys.stdout.flush()
+                                            time.sleep(5)
                                                 ratio_start_time = time.time()  # Reset timer for retry
-                                                continue
-                                            else:
-                                                print(f"      ✗ {ticker1}/{ticker2}: Failed after {max_retries} attempts (timeout), skipping...", flush=True)
-                                                sys.stdout.flush()
-                                                break
+                                            continue
+                                        else:
+                                            print(f"      ✗ {ticker1}/{ticker2}: Failed after {max_retries} attempts (timeout), skipping...", flush=True)
+                                            sys.stdout.flush()
+                                            break
                                         else:
                                             raise  # Re-raise other exceptions
                                     
@@ -5485,12 +5545,12 @@ def start_background_analysis():
             else:
                 # Only treat as complete if it has sectors data and no incomplete stage
                 if "sectors" in cached_data and checkpoint_stage not in incomplete_stages:
-                    print("✓ Cache found - analysis already completed", flush=True)
-                    print("="*60 + "\n", flush=True)
-                    global analysis_progress
-                    analysis_progress["status"] = "complete"
-                    analysis_progress["results"] = cached_data
-                    analysis_progress["message"] = "Loaded from cache"
+            print("✓ Cache found - analysis already completed", flush=True)
+            print("="*60 + "\n", flush=True)
+            global analysis_progress
+            analysis_progress["status"] = "complete"
+            analysis_progress["results"] = cached_data
+            analysis_progress["message"] = "Loaded from cache"
                     return  # Only return if complete - partial checkpoints should continue
                 else:
                     # Invalid or incomplete checkpoint - treat as partial
@@ -5505,8 +5565,8 @@ def start_background_analysis():
             print("🚀 Starting automatic background analysis...", flush=True)
             print(f"   (Resuming from checkpoint: {checkpoint_stage})", flush=True)
         else:
-            print("🚀 Starting automatic background analysis...", flush=True)
-            print("   (No cache found - will calculate fresh data)", flush=True)
+        print("🚀 Starting automatic background analysis...", flush=True)
+        print("   (No cache found - will calculate fresh data)", flush=True)
         print("="*60 + "\n", flush=True)
         
         # Call the analysis function directly
