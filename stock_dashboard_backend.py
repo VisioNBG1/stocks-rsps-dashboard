@@ -1236,15 +1236,36 @@ def status_check():
 
 @app.route('/cleanup-duplicates', methods=['POST', 'GET'])
 def cleanup_duplicates():
-    """Clean up duplicate entries in Supabase stock_data table"""
+    """Clean up duplicate entries in Supabase stock_data table
+    
+    Query parameters:
+    - date: Optional date string (YYYY-MM-DD). If not provided, cleans today's date.
+    - all_dates: If 'true', cleans all dates (use with caution)
+    """
     try:
         if not SUPABASE_AVAILABLE or not supabase_client:
             return jsonify({"error": "Supabase not available"}), 500
         
-        date_str = datetime.now().strftime("%Y-%m-%d")
+        # Get date parameter or use today
+        date_param = request.args.get('date')
+        all_dates = request.args.get('all_dates', 'false').lower() == 'true'
         
-        # Get all downloaded stocks from stock_data
-        result = supabase_client.table("stock_data").select("ticker, id, created_at").eq("stage", "downloaded").eq("date_str", date_str).order("id").execute()
+        if all_dates:
+            date_str = "all_dates"
+            # Get all downloaded stocks from stock_data (no date filter)
+            result = supabase_client.table("stock_data").select("ticker, id, created_at, date_str").eq("stage", "downloaded").order("id").execute()
+        elif date_param:
+            date_str = date_param
+            # Validate date format
+            try:
+                datetime.strptime(date_str, "%Y-%m-%d")
+            except ValueError:
+                return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+            result = supabase_client.table("stock_data").select("ticker, id, created_at, date_str").eq("stage", "downloaded").eq("date_str", date_str).order("id").execute()
+        else:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            # Get all downloaded stocks from stock_data
+            result = supabase_client.table("stock_data").select("ticker, id, created_at, date_str").eq("stage", "downloaded").eq("date_str", date_str).order("id").execute()
         
         if not result.data:
             return jsonify({
@@ -1258,13 +1279,20 @@ def cleanup_duplicates():
         
         all_records = result.data
         
-        # Group by ticker to find duplicates
+        # Group by ticker (and date if all_dates) to find duplicates
         ticker_counts = {}
         for record in all_records:
             ticker = record.get("ticker")
-            if ticker not in ticker_counts:
-                ticker_counts[ticker] = []
-            ticker_counts[ticker].append(record)
+            # If cleaning all dates, group by ticker+date_str
+            if all_dates:
+                date_key = record.get("date_str", "unknown")
+                key = f"{ticker}_{date_key}"
+            else:
+                key = ticker
+            
+            if key not in ticker_counts:
+                ticker_counts[key] = []
+            ticker_counts[key].append(record)
         
         # Find duplicates
         duplicates = {t: records for t, records in ticker_counts.items() if len(records) > 1}
@@ -1288,13 +1316,26 @@ def cleanup_duplicates():
                         print(f"Error deleting {ticker} (ID: {record['id']}): {e}", flush=True)
         
         # Get unique tickers after cleanup
-        result = supabase_client.table("stock_data").select("ticker").eq("stage", "downloaded").eq("date_str", date_str).execute()
-        unique_tickers = list(set([r.get("ticker") for r in result.data if r.get("ticker")]))
+        if all_dates:
+            result = supabase_client.table("stock_data").select("ticker, date_str").eq("stage", "downloaded").execute()
+            unique_tickers = list(set([r.get("ticker") for r in result.data if r.get("ticker")]))
+        else:
+            result = supabase_client.table("stock_data").select("ticker").eq("stage", "downloaded").eq("date_str", date_str).execute()
+            unique_tickers = list(set([r.get("ticker") for r in result.data if r.get("ticker")]))
+        
+        # Get the actual date(s) cleaned
+        if all_dates:
+            cleaned_dates = list(set([r.get("date_str") for r in all_records if r.get("date_str")]))
+            date_info = f"all_dates ({len(cleaned_dates)} dates)"
+        else:
+            date_info = date_str
+            cleaned_dates = [date_str]
         
         return jsonify({
             "status": "success",
             "message": f"Cleanup completed. Deleted {deleted_count} duplicate entries.",
-            "date": date_str,
+            "date": date_info,
+            "cleaned_dates": cleaned_dates,
             "total_records_before": len(all_records),
             "duplicates_found": len(duplicates),
             "duplicates_deleted": deleted_count,
