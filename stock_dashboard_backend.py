@@ -3661,6 +3661,9 @@ def run_analysis_logic(force_refresh=False):
                 all_tickers.append(ticker)
                 ticker_to_sector[ticker] = sector
         
+        # Track if we loaded stocks from Supabase (to prevent re-downloading)
+        stocks_loaded_from_supabase = False
+        
         # Check if we should skip download (resuming from checkpoint)
         if resume_from_stage in ["stock_analysis_complete", "ratio_analysis_complete"]:
             print("  ⏭ Skipping download (resuming from checkpoint)...", flush=True)
@@ -3709,8 +3712,9 @@ def run_analysis_logic(force_refresh=False):
                     print(f"  ⚠ Failed to load {ticker} from Supabase: {e}, skipping", flush=True)
             
             print(f"  ✓ Loaded {len(batch_data)} stocks from Supabase, ready for z-scoring", flush=True)
-            # Reset resume_from_stage so processing continues
-            resume_from_stage = None
+            # Mark that we've loaded stocks - don't reset resume_from_stage yet
+            # We'll set it later after we've verified we don't need to download
+            stocks_loaded_from_supabase = True
         elif resume_from_stage == "downloading":
             # Resume from downloading stage - use Supabase as source of truth (it's persistent)
             date_str = datetime.now().strftime("%Y-%m-%d")
@@ -3852,9 +3856,18 @@ def run_analysis_logic(force_refresh=False):
         else:
             # Fresh start - initialize batch_data
             batch_data = {}
+            # Check Supabase for already downloaded stocks even on fresh start
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            supabase_downloaded = get_downloaded_stocks_from_supabase(date_str)
+            if supabase_downloaded:
+                print(f"  📊 Found {len(supabase_downloaded)} stocks already in Supabase, filtering them out...", flush=True)
+                # Filter all_tickers to exclude already downloaded stocks
+                all_tickers = [t for t in all_tickers if t not in supabase_downloaded]
+                print(f"  📥 Remaining stocks to download: {len(all_tickers)}", flush=True)
         
         # Download stocks if we have remaining tickers to download
-        if resume_from_stage != "downloading" and len(all_tickers) > 0:
+        # BUT: Skip if we just loaded stocks from Supabase (resuming from stock_analysis)
+        if resume_from_stage != "downloading" and len(all_tickers) > 0 and not stocks_loaded_from_supabase:
             print(f"  Downloading data for {len(all_tickers)} stocks individually (to avoid rate limits)...")
             analysis_progress["status"] = "downloading"
             analysis_progress["stage"] = "Downloading stock data"
@@ -3912,6 +3925,38 @@ def run_analysis_logic(force_refresh=False):
                 analysis_progress["message"] = f"Downloading {ticker} ({idx}/{len(all_tickers)})..."
                 analysis_progress["last_update"] = time.time()
                 sys.stdout.flush()
+                
+                # CRITICAL: Check Supabase FIRST before attempting download
+                date_str = datetime.now().strftime("%Y-%m-%d")
+                existing_data = load_stock_data_from_supabase(ticker, "downloaded", date_str)
+                if existing_data is not None:
+                    # Stock already exists in Supabase - skip download
+                    print(f"  ⏭ Skipping {ticker} - already exists in Supabase ({len(existing_data) if isinstance(existing_data, pd.DataFrame) else 'data'} rows)", flush=True)
+                    if isinstance(existing_data, pd.DataFrame) and not existing_data.empty:
+                        batch_data[ticker] = existing_data
+                        # Update checkpoint to include this stock
+                        current_downloaded = list(set(list(batch_data.keys())))
+                        try:
+                            existing_checkpoint = load_cache()
+                            if existing_checkpoint and existing_checkpoint.get("downloaded_stocks"):
+                                existing_downloaded = existing_checkpoint.get("downloaded_stocks", [])
+                                if not isinstance(existing_downloaded, list):
+                                    existing_downloaded = []
+                                all_downloaded = list(set(current_downloaded + existing_downloaded))
+                            else:
+                                all_downloaded = current_downloaded
+                        except:
+                            all_downloaded = current_downloaded
+                        # Continue to next stock
+                        if idx < len(all_tickers):
+                            print(f"  Waiting {download_delay}s before next stock (stock {idx}/{len(all_tickers)} complete)...", flush=True)
+                            for wait_sec in range(download_delay):
+                                time.sleep(1)
+                                if wait_sec % 5 == 0 and wait_sec > 0:
+                                    print(f"    ... {download_delay - wait_sec}s remaining...", flush=True)
+                            print(f"  Wait complete, continuing to next stock...", flush=True)
+                    continue  # Skip to next ticker
+                
                 max_retries = 3
                 download_success = False
                 for retry in range(max_retries):
