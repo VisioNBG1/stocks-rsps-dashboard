@@ -4294,9 +4294,10 @@ def start_background_analysis():
     thread = threading.Thread(target=run_analysis, daemon=True)
     thread.start()
     print("✓ Background analysis thread started (will check cache and run if needed)", flush=True)
-            date_str = datetime.now().strftime("%Y-%m-%d")
-            
-            # Load checkpoint to get list of downloaded stocks
+
+
+# Cleanup old data on startup using Supabase API
+def cleanup_old_data_on_startup():
             cached_data = load_cache()
             downloaded_stocks = cached_data.get("downloaded_stocks", []) if cached_data else []
             
