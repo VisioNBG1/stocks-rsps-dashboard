@@ -1,9 +1,11 @@
-# Clean up duplicates from yesterday (2025-11-23)
+# Clean up duplicates from ALL dates
 $serviceUrl = "https://stocks-rsps-dashboard.onrender.com"
-$cleanupUrl = "$serviceUrl/cleanup-duplicates?date=2025-11-23"
+$cleanupUrl = "$serviceUrl/cleanup-duplicates?all_dates=true"
 
-Write-Host "Cleaning up duplicates from 2025-11-23..." -ForegroundColor Yellow
+Write-Host "Cleaning up duplicates from ALL dates..." -ForegroundColor Yellow
 Write-Host "URL: $cleanupUrl" -ForegroundColor Gray
+Write-Host ""
+Write-Host "⚠️  This will clean duplicates across all dates in the database" -ForegroundColor Yellow
 Write-Host ""
 
 try {
@@ -13,7 +15,10 @@ try {
     Write-Host ""
     $result = $response.Content | ConvertFrom-Json
     Write-Host "Results:" -ForegroundColor Cyan
-    Write-Host "  Date: $($result.date)" -ForegroundColor White
+    Write-Host "  Date(s) cleaned: $($result.date)" -ForegroundColor White
+    if ($result.cleaned_dates) {
+        Write-Host "  Dates: $($result.cleaned_dates -join ', ')" -ForegroundColor Gray
+    }
     Write-Host "  Total records before: $($result.total_records_before)" -ForegroundColor White
     Write-Host "  Duplicates found: $($result.duplicates_found)" -ForegroundColor White
     Write-Host "  Duplicates deleted: $($result.duplicates_deleted)" -ForegroundColor Green

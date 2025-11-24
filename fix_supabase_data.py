@@ -167,3 +167,5 @@ print("=" * 60)
 print(f"   Downloaded stocks: {len(unique_tickers)}")
 print(f"   Z-scored stocks: {len(z_scored_tickers)}")
 
+
+
