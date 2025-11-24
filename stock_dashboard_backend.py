@@ -3036,7 +3036,10 @@ def save_stock_data_to_supabase(ticker, stage, data, date_str=None):
             data_dict = data
         else:
             # Try to serialize other types
-            data_dict = json.loads(json.dumps(data, default=str))
+            try:
+                data_dict = json.loads(json.dumps(data, default=str))
+            except:
+                data_dict = {"error": "Failed to serialize data"}
         
         stock_data_record = {
             "ticker": ticker,
